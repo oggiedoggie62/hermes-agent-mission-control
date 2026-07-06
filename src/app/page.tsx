@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import { Bot, ListTodo, Lightbulb, Activity, Monitor, Cpu, Database, Thermometer, HardDrive } from "lucide-react";
+import { Bot, ListTodo, Lightbulb, Activity, Monitor, Cpu, Database, Thermometer, HardDrive, Cpu as CpuIcon } from "lucide-react";
 import Link from "next/link";
+import { getAgents, getProjectLedger, getCronJobs } from "@/lib/agentos";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,24 @@ async function getStats() {
 
 export default async function HomePage() {
   const s = await getStats();
+
+  // AgentOS widget data (graceful if unavailable)
+  const [agentosAgents, agentosLedger, agentosCron] = await Promise.all([
+    getAgents().catch(() => null),
+    getProjectLedger().catch(() => null),
+    getCronJobs().catch(() => null),
+  ]);
+  const agentosActive = agentosAgents
+    ? Object.values(agentosAgents.agents).filter((a) => a.state === "active").length
+    : null;
+  const ledgerActive = agentosLedger
+    ? agentosLedger.rows.filter((r) => r.status === "active").length
+    : null;
+  const cronFailing = agentosCron
+    ? agentosCron.filter((j) => j.enabled && j.last_status === "error").length
+    : null;
+  const agentosAvailable = agentosActive !== null && ledgerActive !== null && cronFailing !== null;
+
   // Fallback to Mint-Hub if found, else first entry
   const mint = s.hostHealth.find(h => h.hostname === "Mint-Hub") || s.hostHealth[0];
 
@@ -88,6 +107,41 @@ export default async function HomePage() {
         <Kpi icon={<Activity className="w-4 h-4 text-indigo-400" />} label="Tasks completed" value={s.totalTasks.toLocaleString()} />
         <Kpi icon={<ListTodo className="w-4 h-4 text-rose-400" />} label="Pending missions" value={String(s.pendingMissions)} />
         <Kpi icon={<Lightbulb className="w-4 h-4 text-amber-400" />} label="Ideas to review" value={String(s.pendingIdeas)} />
+      </div>
+
+      <div
+        className="p-5 rounded-2xl flex flex-col gap-3 mb-10 relative overflow-hidden"
+        style={{
+          background: "rgba(30, 41, 59, 0.5)",
+          backdropFilter: "blur(16px)",
+          border: "1px solid rgba(255, 255, 255, 0.1)",
+          boxShadow: "0 10px 30px -10px rgba(0, 0, 0, 0.5)",
+        }}
+      >
+        <div className="flex items-center gap-2 text-[12px] font-black tracking-widest text-cyan-400 uppercase">
+          <CpuIcon className="w-4 h-4" />
+          AgentOS
+        </div>
+        {agentosAvailable ? (
+          <div className="grid grid-cols-3 gap-4">
+            <div className="flex flex-col">
+              <div className="text-[10px] font-bold text-slate-400 uppercase">Agents Active</div>
+              <div className="text-[24px] font-black tracking-tight text-white">{agentosActive}</div>
+            </div>
+            <div className="flex flex-col">
+              <div className="text-[10px] font-bold text-slate-400 uppercase">Projects Active</div>
+              <div className="text-[24px] font-black tracking-tight text-white">{ledgerActive}</div>
+            </div>
+            <div className="flex flex-col">
+              <div className="text-[10px] font-bold text-slate-400 uppercase">Crons Failing</div>
+              <div className={`text-[24px] font-black tracking-tight ${cronFailing > 0 ? "text-rose-400" : "text-emerald-400"}`}>
+                {cronFailing}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="text-[13px] text-slate-400 font-medium">AgentOS: source unavailable</div>
+        )}
       </div>
 
       <div className="mb-6 flex items-center justify-between">

@@ -7,19 +7,19 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// One row per agent your OpenClaw stack runs. Agents self-report here
+/// One row per agent your Hermes stack runs. Agents self-report here
 /// via POST /api/agents/state. The dashboard reads from this table.
 model AgentState {
-  id             String    @id                    // stable id: "content-writer", "trading-bot", etc.
-  name           String                           // human-friendly name
-  emoji          String?                          // rendered on cards
-  role           String?                          // "Content", "Trading", "Research", etc.
-  status         String    @default("offline")    // "online" | "idle" | "working" | "offline" | "error"
+  id             String    @id
+  name           String
+  emoji          String?
+  role           String?
+  status         String    @default("offline")
   lastActive     DateTime?
   tasksCompleted Int       @default(0)
-  totalCost      Float     @default(0)            // cumulative $ spent on API calls
-  currentTask   String?                           // what it's doing right now
-  recentActivity Json?     @default("[]")         // array of { timestamp, message }
+  totalCost      Float     @default(0)
+  currentTask    String?
+  recentActivity Json?     @default("[]")
   updatedAt      DateTime  @updatedAt
 }
 
@@ -29,10 +29,10 @@ model Mission {
   id          String    @id @default(uuid())
   agentId     String
   title       String
-  description String    @db.Text
-  status      String    @default("pending")    // pending | active | completed | failed
-  priority    String    @default("medium")     // high | medium | low
-  result      String?   @db.Text
+  description String
+  status      String    @default("pending")
+  priority    String    @default("medium")
+  result      String?
   createdAt   DateTime  @default(now())
   completedAt DateTime?
 
@@ -46,8 +46,8 @@ model Idea {
   title       String
   description String?
   category    String?
-  source      String?                          // which agent created it
-  status      String?  @default("pending")     // pending | approved | rejected
+  source      String?
+  status      String?  @default("pending")
   timestamp   DateTime @default(now())
 
   @@index([category])
@@ -60,4 +60,31 @@ model DataStore {
   key       String   @id
   data      Json
   updatedAt DateTime @updatedAt
+}
+
+model HostHealth {
+  hostname  String   @id
+  cpuUsage  Float
+  ramUsage  Float
+  diskUsage Float
+  gpuTemp   Float?
+  nasConnected Boolean @default(false)
+  nasAvailable Float @default(0)
+  updatedAt DateTime @updatedAt
+}
+
+model GeneratedFile {
+  id        String   @id @default(uuid())
+  path      String   @unique
+  name      String
+  extension String
+  size      Int
+  agentId   String?
+  category  String?
+  content   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([agentId])
+  @@index([category])
 }

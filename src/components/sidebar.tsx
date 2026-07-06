@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Bot, ListTodo, Lightbulb, Calendar } from "lucide-react";
+import { LayoutDashboard, Bot, ListTodo, Lightbulb, Calendar, FileText, Server } from "lucide-react";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/machines", label: "Homelab", icon: Server },
   { href: "/agents", label: "Agents", icon: Bot },
   { href: "/missions", label: "Missions", icon: ListTodo },
   { href: "/ideas", label: "Ideas", icon: Lightbulb },
+  { href: "/library", label: "Library", icon: FileText },
   { href: "/calendar", label: "Calendar", icon: Calendar },
 ];
 
@@ -26,7 +28,7 @@ export function Sidebar() {
         >
           O
         </div>
-        OpenClaw Mission Control
+        Hermes Mission Control
       </div>
       <nav className="flex flex-col gap-0.5">
         {NAV.map((item) => {

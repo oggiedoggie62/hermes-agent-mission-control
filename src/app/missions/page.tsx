@@ -1,38 +1,77 @@
+
 import { prisma } from "@/lib/prisma";
+import { Plus, Clock, CheckCircle2, Circle, AlertCircle } from "lucide-react";
+import { CreateMissionButton } from "../../components/create-mission-button";
 
 export const dynamic = "force-dynamic";
 
 export default async function MissionsPage() {
-  let missions: Array<{ id: string; agentId: string; title: string; status: string; priority: string; createdAt: Date }> = [];
-  try {
-    missions = await prisma.mission.findMany({ orderBy: { createdAt: "desc" }, take: 50 });
-  } catch {}
+  const [missions, agents] = await Promise.all([
+    prisma.mission.findMany({ orderBy: { createdAt: "desc" } }),
+    prisma.agentState.findMany({ select: { id: true, name: true, emoji: true }, orderBy: { name: "asc" } })
+  ]);
+
+  const columns = [
+    { title: "Pending", status: "pending", icon: <Circle className="w-4 h-4 text-slate-500" /> },
+    { title: "Active", status: "active", icon: <Clock className="w-4 h-4 text-cyan-400" /> },
+    { title: "Completed", status: "completed", icon: <CheckCircle2 className="w-4 h-4 text-emerald-400" /> },
+    { title: "Failed", status: "failed", icon: <AlertCircle className="w-4 h-4 text-rose-500" /> },
+  ];
 
   return (
-    <div className="p-8 max-w-[1000px] mx-auto">
-      <h1 className="text-[32px] font-semibold tracking-[-0.02em] mb-2">Missions</h1>
-      <p className="text-[var(--ink-2)] mb-8">
-        Work queued for your agents. They pick up pending missions, run them, and report status.
-      </p>
-      <div className="flex flex-col gap-2">
-        {missions.map((m) => (
-          <div
-            key={m.id}
-            className="p-4 rounded-xl flex items-center gap-4"
-            style={{ background: "var(--panel)", border: "1px solid var(--line)" }}
-          >
-            <div className="flex-1 min-w-0">
-              <div className="font-medium text-[14px]">{m.title}</div>
-              <div className="text-[12px] text-[var(--ink-3)]">
-                {m.agentId} · {m.priority}
-              </div>
+    <div className="p-8 max-w-[1400px] mx-auto min-h-screen text-slate-200">
+      <div className="flex justify-between items-end mb-10">
+        <div>
+          <h1 className="text-[36px] font-black tracking-[-0.04em] mb-2 text-white uppercase italic">Task Board</h1>
+          <p className="text-slate-400 font-medium">Kanban execution view for your digital workforce.</p>
+        </div>
+        <CreateMissionButton agents={agents} />
+      </div>
+
+      <div className="grid grid-cols-4 gap-6 items-start">
+        {columns.map((col) => (
+          <div key={col.status} className="flex flex-col gap-4">
+            <div className="flex items-center gap-2 px-2 mb-2">
+              {col.icon}
+              <span className="text-[12px] font-black uppercase tracking-widest text-white">{col.title}</span>
+              <span className="text-[10px] bg-white/5 px-2 py-0.5 rounded-full text-slate-500 font-bold">
+                {missions.filter(m => m.status === col.status).length}
+              </span>
             </div>
-            <div className="text-[12px] text-[var(--ink-2)]">{m.status}</div>
+
+            <div className="flex flex-col gap-3 min-h-[500px] p-2 bg-black/10 rounded-3xl border border-white/5">
+              {missions
+                .filter((m) => m.status === col.status)
+                .map((m) => (
+                  <div
+                    key={m.id}
+                    className="p-5 rounded-2xl border transition-all hover:bg-white/[0.04] group relative"
+                    style={{ background: "rgba(30, 41, 59, 0.4)", borderColor: "rgba(255, 255, 255, 0.05)" }}
+                  >
+                    <div className="flex justify-between items-start mb-3">
+                       <div className={`text-[9px] font-black px-2 py-0.5 rounded border uppercase tracking-tighter ${
+                         m.priority === 'high' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 
+                         m.priority === 'medium' ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' : 
+                         'bg-slate-500/10 text-slate-400 border-slate-500/20'
+                       }`}>
+                         {m.priority}
+                       </div>
+                       {col.icon}
+                    </div>
+                    <h3 className="text-[15px] font-bold text-white mb-1 group-hover:text-cyan-400 transition-colors tracking-tight">{m.title}</h3>
+                    <p className="text-[12px] text-slate-400 mb-4 line-clamp-2 leading-relaxed">{m.description}</p>
+                    
+                    <div className="flex items-center justify-between pt-3 border-t border-white/5">
+                      <div className="text-[10px] font-black text-slate-500 uppercase flex items-center gap-1">
+                         <span className="text-white italic">{m.agentId}</span>
+                      </div>
+                      <div className="text-[10px] font-black text-slate-600">{new Date(m.createdAt).toLocaleDateString()}</div>
+                    </div>
+                  </div>
+                ))}
+            </div>
           </div>
         ))}
-        {missions.length === 0 && (
-          <div className="p-6 text-center text-[var(--ink-3)]">No missions yet.</div>
-        )}
       </div>
     </div>
   );

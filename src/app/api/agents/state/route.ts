@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
  *   GET  /api/agents/state              -> list all agents
  *   POST /api/agents/state              -> upsert one agent's state
  *
- * OpenClaw agents call POST here every N seconds with their current status.
+ * Hermes agents call POST here every N seconds with their current status.
  * Auth: requires `Authorization: Bearer <INTERNAL_API_SECRET>` header so
  * random internet traffic can't write to your dashboard.
  */

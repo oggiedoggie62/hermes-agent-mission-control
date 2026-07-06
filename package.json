@@ -2,7 +2,7 @@
   "name": "openclaw-mission-control",
   "version": "0.1.0",
   "private": false,
-  "description": "A web dashboard template for running and monitoring your OpenClaw AI agents. Start here, customize, deploy.",
+  "description": "A web dashboard template for running and monitoring your Hermes AI agents. Start here, customize, deploy.",
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",

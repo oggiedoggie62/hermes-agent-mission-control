@@ -28,7 +28,7 @@ A Mission Control dashboard for AI agents. Next.js 16 App Router, Prisma
 ## Data flow reference
 
 ```
-OpenClaw Agent (Python / TS)
+Hermes Agent (Python / TS)
        │  POST /api/agents/state
        │  Authorization: Bearer $INTERNAL_API_SECRET
        ▼

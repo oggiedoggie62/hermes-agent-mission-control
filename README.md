@@ -1,10 +1,10 @@
-# OpenClaw Mission Control
+# Hermes Mission Control
 
-A web dashboard template for running and monitoring your OpenClaw AI agents.
+A web dashboard template for running and monitoring your Hermes AI agents.
 Inspired by Max HQ, the mission control that powers everything built by
 [@sharbelxyz](https://x.com/sharbelxyz).
 
-> **Featured in:** "OpenClaw is 10x Better With This Mission Control Setup"
+> **Featured in:** "Hermes is 10x Better With This Mission Control Setup"
 > ([@Sharbelxyz on YouTube](https://www.youtube.com/@Sharbelxyz))
 
 ## What this is
@@ -19,7 +19,7 @@ terminals, a dozen log files, and no single place that answers:
 - Where are the ideas they queued up for me to review?
 - What's in my missions backlog?
 
-That's what this dashboard is for. Every OpenClaw agent posts its state to
+That's what this dashboard is for. Every Hermes agent posts its state to
 one endpoint (`POST /api/agents/state`), and the dashboard shows you the
 entire stack at a glance.
 
@@ -57,7 +57,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-## Wiring your OpenClaw agents to it
+## Wiring your Hermes agents to it
 
 Every agent sends a heartbeat. Minimal Python example:
 
@@ -106,14 +106,14 @@ That's it. The dashboard picks up the update on next refresh.
 ## Customizing
 
 This repo is **intentionally minimal** - a dashboard shell with one generic
-agents table. The idea is you send your OpenClaw agent at this codebase with
+agents table. The idea is you send your Hermes agent at this codebase with
 the `BOOTSTRAP.md` file and it extends the dashboard for *your* stack.
 
 Want trading PnL cards? Newsletter analytics? YouTube performance? Wire your
 own agent to fetch it, post to a new route, and render it on a new page. The
 scaffolding is here; the personality is yours.
 
-See `BOOTSTRAP.md` for the onboarding flow designed for OpenClaw agents.
+See `BOOTSTRAP.md` for the onboarding flow designed for Hermes agents.
 See `CLAUDE.md` for notes if you're editing this with Claude Code.
 
 ## Deploying

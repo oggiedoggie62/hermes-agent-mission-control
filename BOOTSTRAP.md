@@ -1,6 +1,6 @@
 # BOOTSTRAP.md
 
-**Audience:** an OpenClaw (or Claude Code) agent the user has pointed at
+**Audience:** an Hermes (or Claude Code) agent the user has pointed at
 this repo to set it up for them. If you're a human reading this, see
 `README.md` instead.
 

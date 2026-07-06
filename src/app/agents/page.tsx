@@ -22,7 +22,7 @@ export default async function AgentsPage() {
     <div className="p-8 max-w-[1200px] mx-auto">
       <h1 className="text-[32px] font-semibold tracking-[-0.02em] mb-2">Agents</h1>
       <p className="text-[var(--ink-2)] mb-8">
-        Every agent your OpenClaw stack is running. They self-report here via{" "}
+        Every agent your Hermes stack is running. They self-report here via{" "}
         <code className="px-1.5 py-0.5 rounded" style={{ background: "var(--panel)" }}>
           POST /api/agents/state
         </code>

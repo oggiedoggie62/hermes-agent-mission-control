@@ -14,3 +14,10 @@ html, body {
   background: var(--bg);
   color: var(--ink);
 }
+
+/* Homelab machines card */
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}

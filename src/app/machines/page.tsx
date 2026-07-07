@@ -19,12 +19,12 @@ export default function MachinesPage() {
   useEffect(() => {
     fetch("/api/host/health")
       .then((res) => res.json())
-      .then(setHosts)
+      .then((data) => setHosts(data.hosts || []))
       .catch(console.error);
     const interval = setInterval(() => {
       fetch("/api/host/health")
         .then((res) => res.json())
-        .then(setHosts);
+        .then((data) => setHosts(data.hosts || []));
     }, 10000);
     return () => clearInterval(interval);
   }, []);

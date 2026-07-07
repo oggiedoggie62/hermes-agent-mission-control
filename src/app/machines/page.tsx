@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Server, Cpu, HardDrive, Thermometer, Activity } from "lucide-react";
+import { Server, Cpu, HardDrive, Thermometer, Activity, Monitor, Globe, Wifi } from "lucide-react";
 
 interface HostHealth {
   hostname: string;
@@ -13,8 +13,32 @@ interface HostHealth {
   updatedAt: string;
 }
 
+interface RegistryDevice {
+  name: string;
+  hostname: string;
+  os: string;
+  role: string;
+  cpu: string | null;
+  ram: string | null;
+  gpu: string | null;
+  tailscale_ip: string | null;
+  notes: string;
+}
+
+interface RegistryService {
+  name: string;
+  type: string;
+  host: string | null;
+  check_type: string;
+  url: string | null;
+  port: number | null;
+  notes: string;
+}
+
 export default function MachinesPage() {
   const [hosts, setHosts] = useState<HostHealth[]>([]);
+  const [devices, setDevices] = useState<RegistryDevice[]>([]);
+  const [services, setServices] = useState<RegistryService[]>([]);
 
   useEffect(() => {
     fetch("/api/host/health")
@@ -26,6 +50,16 @@ export default function MachinesPage() {
         .then((res) => res.json())
         .then((data) => setHosts(data.hosts || []));
     }, 10000);
+
+    // Fetch registry data once
+    fetch("/api/registry")
+      .then((res) => res.json())
+      .then((data) => {
+        setDevices(data.devices || []);
+        setServices(data.services || []);
+      })
+      .catch(console.error);
+
     return () => clearInterval(interval);
   }, []);
 
@@ -96,6 +130,76 @@ export default function MachinesPage() {
           </div>
         ))}
       </div>
+
+      {/* Registry Devices */}
+      {devices.length > 0 && (
+        <>
+          <h2 className="text-[20px] font-black uppercase tracking-tight text-white mt-14 mb-6">Registered Devices</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
+            {devices.map((d) => (
+              <div key={d.name} className="panel p-5 flex flex-col gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 grid place-items-center">
+                    <Monitor className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base">{d.name}</h3>
+                    <div className="text-[10px] text-[var(--ink-2)] font-mono">{d.hostname}</div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[12px]">
+                  <div><span className="text-[var(--ink-3)]">OS:</span> {d.os}</div>
+                  <div><span className="text-[var(--ink-3)]">Role:</span> {d.role}</div>
+                  {d.tailscale_ip && (
+                    <div className="col-span-2 flex items-center gap-1 text-cyan-400">
+                      <Wifi className="w-3 h-3" /> {d.tailscale_ip}
+                    </div>
+                  )}
+                </div>
+                <div className="text-[10px] text-[var(--ink-3)] leading-relaxed">{d.notes}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Registry Services */}
+      {services.length > 0 && (
+        <>
+          <h2 className="text-[20px] font-black uppercase tracking-tight text-white mt-8 mb-6">Registered Services</h2>
+          <div className="rounded-xl overflow-hidden mb-10" style={{ border: "1px solid var(--line)" }}>
+            <table className="w-full text-[13px]">
+              <thead style={{ background: "var(--panel)" }}>
+                <tr className="text-left text-[11px] uppercase tracking-wider text-[var(--ink-3)]">
+                  <th className="p-3 font-medium">Name</th>
+                  <th className="p-3 font-medium">Type</th>
+                  <th className="p-3 font-medium">URL</th>
+                  <th className="p-3 font-medium">Check</th>
+                </tr>
+              </thead>
+              <tbody>
+                {services.map((s) => (
+                  <tr key={s.name} className="border-t" style={{ borderColor: "var(--line)" }}>
+                    <td className="p-3 font-medium">{s.name}</td>
+                    <td className="p-3 text-[var(--ink-2)] text-[12px]">{s.type}</td>
+                    <td className="p-3">
+                      {s.url ? (
+                        <a href={s.url} target="_blank" rel="noopener noreferrer"
+                          className="text-cyan-400 hover:text-cyan-300 text-[12px] underline underline-offset-1">
+                          {s.url}
+                        </a>
+                      ) : (
+                        <span className="text-[var(--ink-3)]">—</span>
+                      )}
+                    </td>
+                    <td className="p-3 text-[var(--ink-2)] text-[12px]">{s.check_type}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   );
 }

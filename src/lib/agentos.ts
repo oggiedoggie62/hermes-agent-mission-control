@@ -1,5 +1,6 @@
 import { readFile, readdir, stat } from "fs/promises";
 import path from "path";
+import fs from "fs";
 
 // ---------------------------------------------------------------------------
 // Environment
@@ -271,6 +272,113 @@ export async function getDocFile(
 ): Promise<string | null> {
   if (!relPath.endsWith(".md")) return null;
   return safeRead(relPath, (raw) => raw);
+}
+
+// ---------------------------------------------------------------------------
+// Graphify reader
+// ---------------------------------------------------------------------------
+
+export interface GraphifyMetadata {
+  project: string;
+  nodeCount: number;
+  edgeCount: number;
+  communityCount: number;
+  lastUpdated: string;
+  reportSummary: string;
+  hasGraphHtml: boolean;
+  hasGraphTreeHtml: boolean;
+  graphPath: string;
+}
+
+export async function getGraphifyData(): Promise<GraphifyMetadata[]> {
+  const ledger = await getProjectLedger();
+  if (!ledger) return [];
+
+  const results: GraphifyMetadata[] = [];
+
+  for (const row of ledger.rows) {
+    if (row.status !== "active") continue;
+
+    // Resolve project path from Projects/index.json for full path
+    const index = await getProjectsIndex();
+    if (!index) continue;
+
+    const entry = index.projects.find(
+      (p) => p.name === row.project,
+    );
+    if (!entry) continue;
+
+    // Resolve ~/ paths to absolute
+    const resolvedPath = entry.path.startsWith("~")
+      ? path.join(homeDir(), entry.path.slice(2))
+      : entry.path;
+
+    const graphDir = path.join(resolvedPath, "graphify-out");
+    const graphJsonPath = path.join(graphDir, "graph.json");
+    const reportPath = path.join(graphDir, "GRAPH_REPORT.md");
+    const graphHtmlPath = path.join(graphDir, "graph.html");
+    const graphTreeHtmlPath = path.join(graphDir, "GRAPH_TREE.html");
+
+    if (!fs.existsSync(graphJsonPath)) continue;
+
+    try {
+      const raw = await readFile(graphJsonPath, "utf-8");
+      const graph = JSON.parse(raw);
+      const nodes = graph.nodes ?? [];
+      const communities = new Set(nodes.map((n: any) => n.community).filter((c: any) => c !== undefined));
+
+      // Count edges: nodes with community > 0 and edges array
+      // Edges are implicit via hyperedges and community co-membership
+      // Count explicit hyperedge connections
+      const hyperedgeConnections = (graph.graph?.hyperedges ?? []).reduce(
+        (sum: number, h: any) => sum + (h.nodes?.length ?? 0),
+        0,
+      );
+
+      let reportSummary = "";
+      try {
+        const reportRaw = await readFile(reportPath, "utf-8");
+        // Extract the summary line: "58 nodes · 22 edges · 39 communities"
+        const summaryMatch = reportRaw.match(
+          /(\d+)\s*nodes?\s*·\s*(\d+)\s*edges?\s*·\s*(\d+)\s*communities?/,
+        );
+        if (summaryMatch) {
+          reportSummary = `${summaryMatch[1]} nodes · ${summaryMatch[2]} edges · ${summaryMatch[3]} communities`;
+        }
+        // Grab the first line of the Knowledge Gaps section as extra context
+        const gapsMatch = reportRaw.match(/## Knowledge Gaps[\s\S]*?-\s*(.+)/);
+        if (gapsMatch) {
+          const gap = gapsMatch[1].trim();
+          if (reportSummary) reportSummary += ` — ${gap}`;
+        }
+      } catch {
+        // report file optional
+      }
+
+      const stats = await stat(graphJsonPath);
+      const lastUpdated = stats.mtime.toISOString();
+
+      results.push({
+        project: row.project,
+        nodeCount: nodes.length,
+        edgeCount: hyperedgeConnections,
+        communityCount: communities.size,
+        lastUpdated,
+        reportSummary,
+        hasGraphHtml: fs.existsSync(graphHtmlPath),
+        hasGraphTreeHtml: fs.existsSync(graphTreeHtmlPath),
+        graphPath: graphDir,
+      });
+    } catch {
+      // skip unreadable graphs
+    }
+  }
+
+  return results;
+}
+
+function homeDir(): string {
+  return process.env.HOME || "/home/oggie";
 }
 
 // ---------------------------------------------------------------------------

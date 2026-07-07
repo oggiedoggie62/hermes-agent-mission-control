@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import { Bot, ListTodo, Lightbulb, Activity, Monitor, Cpu, Database, Thermometer, HardDrive, Cpu as CpuIcon } from "lucide-react";
+import { Bot, ListTodo, Lightbulb, Activity, Monitor, Cpu, Database, Thermometer, HardDrive, Cpu as CpuIcon, Share2 } from "lucide-react";
 import Link from "next/link";
-import { getAgents, getProjectLedger, getCronJobs } from "@/lib/agentos";
+import { getAgents, getProjectLedger, getCronJobs, getGraphifyData } from "@/lib/agentos";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +41,9 @@ export default async function HomePage() {
     ? agentosCron.filter((j) => j.enabled && j.last_status === "error").length
     : null;
   const agentosAvailable = agentosActive !== null && ledgerActive !== null && cronFailing !== null;
+
+  // Graphify knowledge graph data
+  const graphifyData = await getGraphifyData();
 
   // Fallback to Mint-Hub if found, else first entry
   const mint = s.hostHealth.find(h => h.hostname === "Mint-Hub") || s.hostHealth[0];
@@ -143,6 +146,71 @@ export default async function HomePage() {
           <div className="text-[13px] text-slate-400 font-medium">AgentOS: source unavailable</div>
         )}
       </div>
+
+      {/* Graphify Knowledge Graph */}
+      {graphifyData.length > 0 && (
+        <div
+          className="p-5 rounded-2xl flex flex-col gap-3 mb-10 relative overflow-hidden"
+          style={{
+            background: "rgba(30, 41, 59, 0.5)",
+            backdropFilter: "blur(16px)",
+            border: "1px solid rgba(255, 255, 255, 0.1)",
+            boxShadow: "0 10px 30px -10px rgba(0, 0, 0, 0.5)",
+          }}
+        >
+          <div className="flex items-center gap-2 text-[12px] font-black tracking-widest text-cyan-400 uppercase">
+            <Share2 className="w-4 h-4" />
+            Knowledge Graph
+          </div>
+          <div className="grid grid-cols-1 gap-4">
+            {graphifyData.map((g) => (
+              <div key={g.project} className="flex flex-col gap-2">
+                <div className="text-[13px] font-bold text-white">{g.project}</div>
+                {g.reportSummary && (
+                  <div className="text-[12px] text-slate-300 leading-relaxed">{g.reportSummary}</div>
+                )}
+                <div className="grid grid-cols-3 gap-3 mt-1">
+                  <div className="flex flex-col">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase">Nodes</div>
+                    <div className="text-[18px] font-black text-white">{g.nodeCount}</div>
+                  </div>
+                  <div className="flex flex-col">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase">Edges</div>
+                    <div className="text-[18px] font-black text-white">{g.edgeCount}</div>
+                  </div>
+                  <div className="flex flex-col">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase">Communities</div>
+                    <div className="text-[18px] font-black text-white">{g.communityCount}</div>
+                  </div>
+                </div>
+                <div className="flex gap-3 mt-1">
+                  {g.hasGraphHtml && (
+                    <a
+                      href={`/api/files?path=${encodeURIComponent(g.graphPath + "/graph.html")}`}
+                      className="text-[11px] font-bold text-cyan-400 hover:text-cyan-300 underline underline-offset-2"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Open Graph →
+                    </a>
+                  )}
+                  {g.hasGraphTreeHtml && (
+                    <a
+                      href={`/api/files?path=${encodeURIComponent(g.graphPath + "/GRAPH_TREE.html")}`}
+                      className="text-[11px] font-bold text-indigo-400 hover:text-indigo-300 underline underline-offset-2"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Open Tree →
+                    </a>
+                  )}
+                </div>
+                <div className="text-[10px] text-slate-500">Last updated: {new Date(g.lastUpdated).toLocaleString()}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="mb-6 flex items-center justify-between">
         <h2 className="text-[20px] font-black uppercase tracking-tight text-white">The Collective</h2>

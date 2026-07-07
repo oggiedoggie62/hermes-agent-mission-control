@@ -84,11 +84,9 @@ export interface ProjectIndex {
 export interface LedgerRow {
   project: string;
   type: string;
-  agents: string;
+  contributors: string;
   created: string;
-  lastTouched: string;
-  filePath: string;
-  url: string;
+  lastUpdated: string;
   status: string;
   notes: string;
 }
@@ -302,7 +300,7 @@ function parseLedgerMarkdown(raw: string): LedgerResult {
       .map((c) => c.trim())
       .filter((c) => c.length > 0);
 
-    if (cols.length < 9) {
+    if (cols.length < 7) {
       skippedRows++;
       continue;
     }
@@ -310,13 +308,11 @@ function parseLedgerMarkdown(raw: string): LedgerResult {
     rows.push({
       project: cols[0] ?? "",
       type: cols[1] ?? "",
-      agents: cols[2] ?? "",
+      contributors: cols[2] ?? "",
       created: cols[3] ?? "",
-      lastTouched: cols[4] ?? "",
-      filePath: cols[5] ?? "",
-      url: cols[6] ?? "",
-      status: cols[7] ?? "",
-      notes: cols[8] ?? "",
+      lastUpdated: cols[4] ?? "",
+      status: cols[5] ?? "",
+      notes: cols[6] ?? "",
     });
   }
 

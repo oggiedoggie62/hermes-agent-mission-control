@@ -1,13 +1,37 @@
 
 import { prisma } from "@/lib/prisma";
-import { FileText, Code, FileCode, Search, Download } from "lucide-react";
+import { FileText, Code, FileCode, Search, Download, BookOpen, FolderOpen, File } from "lucide-react";
+import Link from "next/link";
+import { getKnowledgeTree, getDecisions, getDocFile } from "@/lib/agentos";
+import ReactMarkdown from "react-markdown";
 
 export const dynamic = "force-dynamic";
+
+const ROOT_DOCS = [
+  { name: "README.md", path: "README.md" },
+  { name: "STATUS.md", path: "STATUS.md" },
+  { name: "GOVERNANCE.md", path: "GOVERNANCE.md" },
+  { name: "DESIGN.md", path: "DESIGN.md" },
+];
 
 export default async function ContentLibrary() {
   const files = await prisma.generatedFile.findMany({
     orderBy: { updatedAt: "desc" }
   });
+
+  const [knowledgeTree, decisions] = await Promise.all([
+    getKnowledgeTree().catch(() => []),
+    getDecisions(10).catch(() => []),
+  ]);
+
+  // Group knowledge tree by first directory
+  const knowledgeDirs = new Map<string, { path: string; isDir: boolean }[]>();
+  for (const item of knowledgeTree) {
+    const parts = item.path.split("/");
+    const dir = parts.length > 1 ? parts[0]! : "other";
+    if (!knowledgeDirs.has(dir)) knowledgeDirs.set(dir, []);
+    knowledgeDirs.get(dir)!.push(item);
+  }
 
   return (
     <div className="p-8 max-w-[1200px] mx-auto min-h-screen text-slate-200">
@@ -46,6 +70,79 @@ export default async function ContentLibrary() {
             </div>
           ))
         )}
+      </div>
+
+      {/* AgentOS Docs Section */}
+      <h2 className="text-[20px] font-black uppercase tracking-tight text-white mt-14 mb-6">AgentOS Docs</h2>
+
+      {/* Root docs */}
+      <div className="mb-6">
+        <h3 className="text-[12px] font-bold text-slate-400 uppercase tracking-wider mb-3">System Docs</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {ROOT_DOCS.map((doc) => (
+            <Link
+              key={doc.path}
+              href={`/library/doc?path=${encodeURIComponent(doc.path)}`}
+              className="p-4 rounded-2xl border border-white/10 bg-slate-900/30 hover:bg-slate-800/40 transition-all flex flex-col gap-2"
+            >
+              <FileText className="w-5 h-5 text-cyan-400" />
+              <div className="text-[13px] font-bold text-white">{doc.name}</div>
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      {/* Decisions */}
+      <div className="mb-6">
+        <h3 className="text-[12px] font-bold text-slate-400 uppercase tracking-wider mb-3">Decisions</h3>
+        {decisions.length > 0 ? (
+          <div className="grid grid-cols-1 gap-2">
+            {decisions.map((d, i) => (
+              <Link
+                key={i}
+                href={`/library/doc?path=${encodeURIComponent("Memory/decisions/" + d.file)}`}
+                className="p-3 rounded-xl border border-white/10 bg-slate-900/30 hover:bg-slate-800/40 transition-all flex items-center gap-3"
+              >
+                <BookOpen className="w-4 h-4 text-amber-400 flex-none" />
+                <div>
+                  <div className="text-[13px] font-bold text-white">{d.file.replace(".md", "")}</div>
+                  {d.headings.length > 0 && (
+                    <div className="text-[10px] text-slate-400 mt-0.5">{d.headings.slice(0, 2).join(" · ")}</div>
+                  )}
+                </div>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="text-[13px] text-slate-500">No decisions logged yet.</div>
+        )}
+      </div>
+
+      {/* Knowledge tree */}
+      <div>
+        <h3 className="text-[12px] font-bold text-slate-400 uppercase tracking-wider mb-3">Knowledge</h3>
+        <div className="grid grid-cols-1 gap-2">
+          {Array.from(knowledgeDirs.entries()).map(([dir, items]) => (
+            <div key={dir} className="rounded-2xl border border-white/10 bg-slate-900/30 overflow-hidden">
+              <div className="p-3 bg-white/5 border-b border-white/10 flex items-center gap-2">
+                <FolderOpen className="w-4 h-4 text-indigo-400" />
+                <span className="text-[12px] font-bold text-white uppercase tracking-wider">{dir}</span>
+              </div>
+              <div className="p-2">
+                {items.filter(n => !n.isDir).map((item, j) => (
+                  <Link
+                    key={j}
+                    href={`/library/doc?path=${encodeURIComponent(item.path)}`}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/5 transition-all text-[12px]"
+                  >
+                    <File className="w-3.5 h-3.5 text-slate-500 flex-none" />
+                    <span className="text-slate-300">{item.path.split("/").pop()}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

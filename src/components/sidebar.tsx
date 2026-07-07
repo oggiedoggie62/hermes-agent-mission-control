@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Bot, ListTodo, Lightbulb, Calendar, FileText, Server } from "lucide-react";
+import { LayoutDashboard, Bot, ListTodo, Lightbulb, Calendar, FileText, Server, KanbanSquare } from "lucide-react";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/machines", label: "Homelab", icon: Server },
   { href: "/agents", label: "Agents", icon: Bot },
+  { href: "/projects", label: "Projects", icon: KanbanSquare },
   { href: "/missions", label: "Missions", icon: ListTodo },
   { href: "/ideas", label: "Ideas", icon: Lightbulb },
   { href: "/library", label: "Library", icon: FileText },

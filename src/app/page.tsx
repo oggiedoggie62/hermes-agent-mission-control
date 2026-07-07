@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import { Bot, ListTodo, Lightbulb, Activity, Monitor, Cpu, Database, Thermometer, HardDrive, Cpu as CpuIcon, Share2 } from "lucide-react";
+import { Bot, ListTodo, Lightbulb, Activity, Monitor, Cpu, Database, Thermometer, HardDrive, Cpu as CpuIcon, Share2, BookOpen } from "lucide-react";
 import Link from "next/link";
-import { getAgents, getProjectLedger, getCronJobs, getGraphifyData } from "@/lib/agentos";
+import { getAgents, getProjectLedger, getCronJobs, getGraphifyData, getDecisions, getKnowledgeTree, getRegistryServices } from "@/lib/agentos";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +44,16 @@ export default async function HomePage() {
 
   // Graphify knowledge graph data
   const graphifyData = await getGraphifyData();
+
+  // Phase 4 — recent decisions, knowledge summary, services
+  const [decisions, knowledgeTree, services] = await Promise.all([
+    getDecisions(5).catch(() => []),
+    getKnowledgeTree().catch(() => []),
+    getRegistryServices().catch(() => null),
+  ]);
+  const serviceCount = services?.services.length ?? null;
+  const docCount = knowledgeTree.filter((n) => !n.isDir).length;
+  const decisionCount = decisions.length;
 
   // Fallback to Mint-Hub if found, else first entry
   const mint = s.hostHealth.find(h => h.hostname === "Mint-Hub") || s.hostHealth[0];
@@ -211,6 +221,80 @@ export default async function HomePage() {
           </div>
         </div>
       )}
+
+      {/* Recent Decisions — Phase 4 */}
+      <div
+        className="p-5 rounded-2xl flex flex-col gap-3 mb-10 relative overflow-hidden"
+        style={{
+          background: "rgba(30, 41, 59, 0.5)",
+          backdropFilter: "blur(16px)",
+          border: "1px solid rgba(255, 255, 255, 0.1)",
+          boxShadow: "0 10px 30px -10px rgba(0, 0, 0, 0.5)",
+        }}
+      >
+        <div className="flex items-center gap-2 text-[12px] font-black tracking-widest text-cyan-400 uppercase">
+          <BookOpen className="w-4 h-4" />
+          Recent Decisions &amp; Knowledge
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Decisions */}
+          <div className="flex flex-col gap-2">
+            <div className="text-[10px] font-bold text-slate-400 uppercase">Decisions</div>
+            {decisionCount > 0 ? (
+              <ul className="space-y-1">
+                {decisions.map((d, i) => (
+                  <li key={i}>
+                    <a
+                      href={`/api/files?path=${encodeURIComponent("/home/oggie/AI/AgentOS/Memory/decisions/" + d.file)}`}
+                      className="text-[12px] text-cyan-300 hover:text-cyan-200 underline underline-offset-1"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {d.file.replace(".md", "")}
+                    </a>
+                    {d.headings.length > 0 && (
+                      <div className="text-[10px] text-slate-400 mt-0.5 leading-tight">
+                        {d.headings.slice(0, 3).join(" · ")}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="text-[12px] text-slate-500">No decisions logged yet.</div>
+            )}
+            <Link href="/library" className="text-[10px] font-bold text-slate-400 hover:text-white mt-1">
+              View all docs →
+            </Link>
+          </div>
+
+          {/* Knowledge docs summary */}
+          <div className="flex flex-col gap-2">
+            <div className="text-[10px] font-bold text-slate-400 uppercase">Knowledge Docs</div>
+            <div className="text-[24px] font-black tracking-tight text-white">{docCount}</div>
+            <div className="text-[11px] text-slate-400">markdown files across Knowledge/</div>
+            <Link href="/library" className="text-[10px] font-bold text-cyan-400 hover:text-cyan-300 underline underline-offset-2 mt-1">
+              Browse library →
+            </Link>
+          </div>
+
+          {/* Registered services */}
+          <div className="flex flex-col gap-2">
+            <div className="text-[10px] font-bold text-slate-400 uppercase">Services</div>
+            {serviceCount !== null ? (
+              <>
+                <div className="text-[24px] font-black tracking-tight text-white">{serviceCount}</div>
+                <div className="text-[11px] text-slate-400">registered in AgentOS</div>
+              </>
+            ) : (
+              <div className="text-[12px] text-slate-500">Unavailable</div>
+            )}
+            <Link href="/library" className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 underline underline-offset-2 mt-1">
+              View services →
+            </Link>
+          </div>
+        </div>
+      </div>
 
       <div className="mb-6 flex items-center justify-between">
         <h2 className="text-[20px] font-black uppercase tracking-tight text-white">The Collective</h2>

@@ -6,12 +6,13 @@ const AGENTOS_ROOT = process.env.AGENTOS_ROOT ?? "/home/oggie/AI/AgentOS";
 const HOME = process.env.HOME ?? "/home/oggie";
 
 /**
- * GET /api/files?path=<absolute-path-to-html>
+ * GET /api/files?path=<absolute-path-to-file>
  *
- * Serves local HTML files (graph.html, GRAPH_TREE.html) from the filesystem
- * with proper Content-Type. Only allows:
- *  - Files ending in .html
- *  - Paths that start with HOME (so they're within ~/)
+ * Serves local files from the filesystem with proper Content-Type.
+ * Allows:
+ *  - .html files (graph.html, GRAPH_TREE.html)
+ *  - .md files (documentation, decisions)
+ *  - Paths that start with HOME (path guard)
  */
 export async function GET(request: NextRequest) {
   const filePath = request.nextUrl.searchParams.get("path");
@@ -19,9 +20,9 @@ export async function GET(request: NextRequest) {
     return new NextResponse("Missing path parameter", { status: 400 });
   }
 
-  // Only allow .html files
-  if (!filePath.endsWith(".html")) {
-    return new NextResponse("Only .html files are allowed", { status: 403 });
+  // Only allow .html and .md files
+  if (!filePath.endsWith(".html") && !filePath.endsWith(".md")) {
+    return new NextResponse("Only .html and .md files are allowed", { status: 403 });
   }
 
   // Path guard: must be under HOME
@@ -30,11 +31,16 @@ export async function GET(request: NextRequest) {
     return new NextResponse("Access denied", { status: 403 });
   }
 
+  // Determine content type
+  const contentType = filePath.endsWith(".md")
+    ? "text/markdown; charset=utf-8"
+    : "text/html; charset=utf-8";
+
   try {
     const content = await readFile(resolved, "utf-8");
     return new NextResponse(content, {
       headers: {
-        "Content-Type": "text/html; charset=utf-8",
+        "Content-Type": contentType,
         "Cache-Control": "no-cache",
       },
     });

@@ -2,14 +2,24 @@
 import { prisma } from "@/lib/prisma";
 import { Plus, Clock, CheckCircle2, Circle, AlertCircle } from "lucide-react";
 import { CreateMissionButton } from "../../components/create-mission-button";
+import { getAgents } from "@/lib/agentos";
 
 export const dynamic = "force-dynamic";
 
 export default async function MissionsPage() {
-  const [missions, agents] = await Promise.all([
+  const [missions, registry] = await Promise.all([
     prisma.mission.findMany({ orderBy: { createdAt: "desc" } }),
-    prisma.agentState.findMany({ select: { id: true, name: true, emoji: true }, orderBy: { name: "asc" } })
+    getAgents(),
   ]);
+
+  // Build agent list from AgentOS registry (always populated)
+  const agents = registry
+    ? Object.entries(registry.agents).map(([id, a]) => ({
+        id,
+        name: a.name,
+        emoji: "🤖",
+      }))
+    : [];
 
   const columns = [
     { title: "Pending", status: "pending", icon: <Circle className="w-4 h-4 text-slate-500" /> },

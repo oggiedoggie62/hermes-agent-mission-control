@@ -79,6 +79,12 @@ export default async function MissionsPage() {
                     </div>
                     <h3 className="text-[15px] font-bold text-white mb-1 group-hover:text-cyan-400 transition-colors tracking-tight">{m.title}</h3>
                     <p className="text-[12px] text-slate-400 mb-4 line-clamp-2 leading-relaxed">{m.description}</p>
+                    {m.result && (
+                      <div className="mb-4 p-3 rounded-lg bg-cyan-500/5 border border-cyan-500/10">
+                        <div className="text-[9px] font-black uppercase tracking-wider text-cyan-400 mb-1">Result</div>
+                        <div className="text-[11px] text-slate-300 leading-relaxed whitespace-pre-wrap line-clamp-4">{m.result}</div>
+                      </div>
+                    )}
                     
                     <div className="flex items-center justify-between pt-3 border-t border-white/5">
                       <div className="text-[10px] font-black text-slate-500 uppercase flex items-center gap-1">

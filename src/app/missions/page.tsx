@@ -86,6 +86,15 @@ export default async function MissionsPage() {
                       </div>
                     )}
                     
+                    {m.debriefPath && (
+                      <a
+                        href={`/library/doc?path=${encodeURIComponent(m.debriefPath)}`}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-cyan-400 hover:text-cyan-300 underline underline-offset-2 mb-3"
+                      >
+                        Read Debrief →
+                      </a>
+                    )}
+                    
                     <div className="flex items-center justify-between pt-3 border-t border-white/5">
                       <div className="text-[10px] font-black text-slate-500 uppercase flex items-center gap-1">
                          <span className="text-white italic">{m.agentId}</span>

@@ -33,6 +33,7 @@ model Mission {
   status      String    @default("pending")
   priority    String    @default("medium")
   result      String?
+  debriefPath String?
   createdAt   DateTime  @default(now())
   completedAt DateTime?
 

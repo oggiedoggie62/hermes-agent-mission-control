@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json();
-    const { id, result, status } = body;
+    const { id, result, status, debriefPath } = body;
 
     if (!id) {
       return NextResponse.json({ error: "Mission ID required" }, { status: 400 });
@@ -12,6 +12,7 @@ export async function PATCH(req: NextRequest) {
 
     const data: Record<string, unknown> = {};
     if (result !== undefined) data.result = result;
+    if (debriefPath !== undefined) data.debriefPath = debriefPath;
     if (status !== undefined) {
       data.status = status;
       if (status === "completed") data.completedAt = new Date();

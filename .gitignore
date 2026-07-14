@@ -11,6 +11,14 @@
 # testing
 /coverage
 
+# local Python tooling and caches
+/.venv/
+__pycache__/
+*.py[cod]
+
+# local one-off database inspection helper
+/query_db.js
+
 # next.js
 /.next/
 /out/

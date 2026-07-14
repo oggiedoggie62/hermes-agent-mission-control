@@ -1,9 +1,10 @@
-
 #!/usr/bin/env python3
 import os
 import shutil
-import requests
+import json
 import subprocess
+import urllib.error
+import urllib.request
 
 NAS_PATH = "/mnt/nas/Youtube4Editing"
 API_URL = "http://localhost:3000/api/host/health"
@@ -49,10 +50,23 @@ def report():
         "nasAvailable": nas_avail
     }
     try:
-        requests.post(API_URL, json=payload, headers={"Authorization": f"Bearer {API_SECRET}"}, timeout=15)
+        body = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            API_URL,
+            data=body,
+            headers={
+                "Authorization": f"Bearer {API_SECRET}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=15) as response:
+            if response.status < 200 or response.status >= 300:
+                raise RuntimeError(f"HTTP {response.status}: {response.read().decode('utf-8', 'replace')}")
         print(f"Health Reported: Mint:{payload['cpuUsage']}% NAS:{'OK' if nas_connected else 'ERR'}")
-    except Exception as e:
+    except (urllib.error.URLError, RuntimeError) as e:
         print(f"Report Error: {e}")
+        raise
 
 if __name__ == "__main__":
     report()

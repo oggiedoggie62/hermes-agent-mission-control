@@ -1,23 +1,52 @@
+/* agent: codex | model: gpt-5 | date: 2026-07-13 */
 @import "tailwindcss";
 
 :root {
-  --bg: #0a0a0a;
-  --panel: #111111;
-  --line: #1f1f1f;
-  --ink: #ededed;
+  /* Dark, Command Center Palette */
+  --bg: #050505;
+  --panel: #121214;
+  --line: #26262a;
+  --ink: #fafafa;
   --ink-2: #a1a1aa;
   --ink-3: #71717a;
-  --accent: #10b981;
+
+  /* Accent Colors */
+  --accent: #10b981; /* Emerald */
+  --cyan: #06b6d4;   /* Cyan */
+  --indigo: #6366f1; /* Indigo */
+  --rose: #f43f5e;   /* Rose */
+  --amber: #f59e0b;  /* Amber */
+
+  /* Semantic Colors for status/alerts */
+  --success: #10b981;
+  --error: #ef4444;
+  --warning: #f59e0b;
+  --info: #3b82f6;
 }
 
 html, body {
   background: var(--bg);
   color: var(--ink);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
-/* Homelab machines card */
+/* Unified Glassmorphism Component */
+.glass-panel,
 .panel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  background: rgba(18, 18, 20, 0.6);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+}
+
+/* Typography Refinements */
+h1, h2, h3, h4 {
+  @apply font-black tracking-tight text-white;
+}
+
+/* Utility for high-density views */
+.text-caption {
+  @apply text-[10px] font-bold uppercase tracking-wider text-zinc-500;
 }

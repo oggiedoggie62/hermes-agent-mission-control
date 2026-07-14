@@ -1,18 +1,47 @@
-
+/* agent: codex | model: gpt-5 | date: 2026-07-14 */
 "use client";
 
 import { useState } from "react";
 import { Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-export function CreateMissionButton({ agents }: { agents: { id: string; name: string; emoji: string | null }[] }) {
+interface MissionAgent {
+  id: string;
+  name: string;
+  emoji: string | null;
+}
+
+interface CreatedMission {
+  id: string;
+  title: string;
+}
+
+interface CreateMissionButtonProps {
+  agents: MissionAgent[];
+  initialTitle?: string;
+  initialDescription?: string;
+  triggerLabel?: string;
+  compact?: boolean;
+  onCreated?: (mission: CreatedMission) => Promise<void> | void;
+}
+
+export function CreateMissionButton({
+  agents,
+  initialTitle = "",
+  initialDescription = "",
+  triggerLabel = "New Mission",
+  compact = false,
+  onCreated,
+}: CreateMissionButtonProps) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError(null);
     const formData = new FormData(e.target as HTMLFormElement);
     
     const payload = {
@@ -23,15 +52,23 @@ export function CreateMissionButton({ agents }: { agents: { id: string; name: st
     };
 
     try {
-      await fetch("/api/missions", {
+      const res = await fetch("/api/missions", {
         method: "POST",
         body: JSON.stringify(payload),
         headers: { "Content-Type": "application/json" }
       });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || "Failed to create mission");
+      }
+
+      const mission = await res.json();
+      await onCreated?.(mission);
       setOpen(false);
       router.refresh();
     } catch (err) {
-      console.error(err);
+      setError(err instanceof Error ? err.message : "Failed to create mission");
     } finally {
       setLoading(false);
     }
@@ -40,10 +77,14 @@ export function CreateMissionButton({ agents }: { agents: { id: string; name: st
   return (
     <>
       <button 
-        onClick={() => setOpen(true)}
-        className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-black font-black text-[12px] uppercase rounded-full transition-all flex items-center gap-2"
+        onClick={() => {
+          setError(null);
+          setOpen(true);
+        }}
+        disabled={agents.length === 0}
+        className={`${compact ? "rounded-lg border border-cyan-500/20 bg-cyan-500/10 px-3 py-1.5 text-[10px] text-cyan-400 hover:bg-cyan-500/20" : "rounded-full bg-cyan-500 px-4 py-2 text-[12px] text-black hover:bg-cyan-400"} flex items-center gap-2 font-black uppercase transition-all disabled:cursor-not-allowed disabled:opacity-40`}
       >
-        <Plus size={16} /> New Mission
+        <Plus size={compact ? 13 : 16} /> {triggerLabel}
       </button>
 
       {open && (
@@ -59,12 +100,12 @@ export function CreateMissionButton({ agents }: { agents: { id: string; name: st
             <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Mission Title</label>
-                <input required name="title" className="bg-slate-800 border border-white/5 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-cyan-500 transition-colors" placeholder="e.g. Scrape new leaks" />
+                <input required name="title" defaultValue={initialTitle} className="bg-slate-800 border border-white/5 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-cyan-500 transition-colors" placeholder="e.g. Scrape new leaks" />
               </div>
 
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Details</label>
-                <textarea name="description" className="bg-slate-800 border border-white/5 rounded-xl px-4 py-2 text-white h-24 focus:outline-none focus:border-cyan-500 transition-colors" placeholder="Mission parameters..." />
+                <textarea name="description" defaultValue={initialDescription} className="bg-slate-800 border border-white/5 rounded-xl px-4 py-2 text-white h-24 focus:outline-none focus:border-cyan-500 transition-colors" placeholder="Mission parameters..." />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -78,13 +119,15 @@ export function CreateMissionButton({ agents }: { agents: { id: string; name: st
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Priority</label>
-                  <select name="priority" className="bg-slate-800 border border-white/5 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-500 transition-colors">
+                  <select name="priority" defaultValue="medium" className="bg-slate-800 border border-white/5 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-500 transition-colors">
                     <option value="low">Low</option>
-                    <option value="medium" selected>Medium</option>
+                    <option value="medium">Medium</option>
                     <option value="high">High</option>
                   </select>
                 </div>
               </div>
+
+              {error && <div role="alert" className="text-[12px] font-medium text-rose-400">{error}</div>}
 
               <button 
                 type="submit" 

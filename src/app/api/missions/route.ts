@@ -1,4 +1,4 @@
-
+/* agent: codex | model: gpt-5 | date: 2026-07-14 */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -18,14 +18,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
     }
 
-    const mission = await prisma.mission.create({
-      data: {
-        title,
-        description: description || "",
-        agentId,
-        priority: priority || "medium",
-        status: "pending",
-      },
+    const mission = await prisma.$transaction(async (tx) => {
+      const created = await tx.mission.create({
+        data: {
+          title,
+          description: description || "",
+          agentId,
+          priority: priority || "medium",
+          status: "pending",
+          executionProvider: "HERMES",
+          executionMode: "MANUAL",
+        },
+      });
+
+      await tx.missionExecution.create({
+        data: {
+          missionId: created.id,
+          status: "queued",
+          provider: "HERMES",
+          mode: "MANUAL",
+          attempt: 1,
+        },
+      });
+
+      return created;
     });
 
     return NextResponse.json(mission);

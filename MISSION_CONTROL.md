@@ -1,0 +1,237 @@
+# Mission Control Architecture
+
+## Purpose and Current Status
+
+Mission Control is a local-first operations dashboard for Hermes agents and AgentOS. It combines live operational data stored in PostgreSQL with durable registries, knowledge, decisions, mission debriefs, and service metadata stored in the AgentOS filesystem.
+
+The original AgentOS integration roadmap through Phase 5 is complete. Mission Control v2 foundation work and the Phase 2.1.1 mission lifecycle enhancement are complete, including archive search and filtering. Phase 2.2 is proceeding one operational component at a time. The command palette has been deferred until the core operational workflows are defined and stable.
+
+## Technology Stack
+
+- Next.js 16 App Router and React 19
+- TypeScript
+- Tailwind CSS v4
+- Prisma 6 with PostgreSQL
+- Lucide React icons
+- React Markdown for AgentOS document and debrief rendering
+- Python and TypeScript reporter/indexing scripts for external data ingestion
+
+The application is currently intended for a trusted local environment. It does not have user authentication, and not every mutation endpoint currently enforces `INTERNAL_API_SECRET`.
+
+## High-Level Architecture
+
+```text
+Hermes agents and reporters
+        |
+        | heartbeats, mission updates, host health
+        v
+Next.js route handlers  <---->  PostgreSQL through Prisma
+        |
+        | guarded reads
+        v
+AgentOS filesystem
+  Agents, Projects, Memory, Knowledge, Logs, Registry
+        |
+        v
+Next.js server-rendered pages and client interactions
+```
+
+Mission Control deliberately uses two data sources:
+
+1. PostgreSQL holds mutable operational state that benefits from queries and updates: agent heartbeats, missions, ideas, host health, generated-file indexes, and generic key/value data.
+2. AgentOS remains the source of truth for durable human-readable system knowledge: agent and project registries, queues, decisions, documentation, knowledge trees, service/device registries, graph metadata, and mission debrief Markdown files.
+
+## Application Structure
+
+### Shared Shell
+
+- `src/app/layout.tsx` provides the global application shell.
+- `src/components/sidebar.tsx` provides desktop navigation and a responsive mobile header/drawer.
+- `src/app/globals.css` contains the dark command-center palette, semantic colors, typography defaults, and shared panel styling.
+
+The shell uses a fixed-width desktop sidebar and `min-w-0` content containment to prevent wide dashboard content from destabilizing the layout. Mobile viewports use a fixed header and dismissible slide-in navigation drawer. Navigation uses exact route matching so Missions and Mission Archives do not appear active simultaneously.
+
+### Pages
+
+- `/` aggregates agent activity, health, AgentOS summaries, decisions, knowledge, and graph information.
+- `/agents` combines the AgentOS agent registry with live heartbeat data.
+- `/projects` displays the AgentOS project index and shared project ledger.
+- `/missions` provides mission creation, a client-side Kanban board, text search, agent/priority/status filters, compact result counts, queued duration, Awaiting Review labeling, mission-worker timing, and automatic state refresh.
+- `/missions/archive` lists completed, explicitly archived missions and provides client-side text search and agent filtering without changing archive persistence.
+- `/ideas` provides one-field Quick Capture for explicitly typed Ideas and To-Dos, a shared chronological review list, and deliberate Idea-to-To-Do and To-Do-to-Mission promotion actions.
+- `/library` combines indexed generated files with AgentOS documents, decisions, and knowledge.
+- `/library/doc` renders guarded AgentOS Markdown files, including mission debriefs.
+- `/machines` displays registered devices, services, and host-health information.
+- `/calendar` reads live Hermes cron job definitions and recent execution status.
+
+Most data-heavy pages are React Server Components. Client Components are used where browser state and direct interaction are required, including the responsive sidebar, mission creation, Kanban/archive actions, active-board review filters, and archive search/filter state. The Missions server page supplies the initial non-archived mission list; `KanbanClient` refreshes its canonical browser-side list from `/api/missions/state` every 20 seconds and whenever the tab becomes visible or the window regains focus. `MissionBoardFilters` controls derived search and filter state. The archive server page fetches the canonical archived mission list once and passes it to `ArchiveClient`.
+
+### API Routes
+
+- `/api/agents/state`: receives and returns live agent heartbeat state.
+- `/api/health`: checks PostgreSQL connectivity.
+- `/api/host/health`: receives and returns machine health reports.
+- `/api/missions`: creates missions and exposes agent choices.
+- `/api/missions/state`: returns current non-archived missions, their latest durable execution attempt, and read-only `mission-worker` last-run, next-run, enabled, and result metadata from the Hermes cron registry.
+- `/api/missions/[id]`: updates mission status, result, debrief path, and archive state.
+- `/api/missions/archive`: returns completed missions whose `isArchived` flag is true.
+- `/api/ideas`: lists and creates Ideas and To-Dos through the existing capture store; POST validates the explicit `idea` or `todo` type.
+- `/api/ideas/[id]`: applies guarded promotion transitions to the existing capture record; it changes an Idea to a To-Do or marks a To-Do promoted after Mission creation succeeds.
+- `/api/content/index`: supports generated-content indexing.
+- `/api/registry`: returns AgentOS device and service registry data.
+- `/api/files`: serves guarded Markdown and HTML files for raw viewing.
+
+Dynamic route parameters are awaited in Next.js 16 route handlers. This is required for routes such as `/api/missions/[id]`; treating `params` synchronously previously broke mission archival.
+
+## Persistence Model
+
+Prisma defines these PostgreSQL models:
+
+- `AgentState`: current agent status, task, activity, cost, and heartbeat timestamp.
+- `Mission`: assigned work, priority, compatibility lifecycle status, result, debrief path, completion time, archive state, and explicit execution provider/mode.
+- `MissionExecution`: durable execution attempts with queued, claimed, running, completed, or failed state; claim/start/activity/completion timestamps; execution and worker identifiers; attempt number; and error details.
+- `Idea`: manually or automatically captured Ideas and To-Dos, distinguished by the required `CaptureType` enum (`idea` or `todo`), plus review state. Existing records were safely backfilled as `idea` through the field default.
+- `HostHealth`: CPU, memory, disk, GPU temperature, and NAS status by hostname.
+- `GeneratedFile`: indexed metadata and optional content for generated files.
+- `DataStore`: generic JSON-backed extension storage.
+
+Mission archival is an explicit state transition, not a deletion. A mission remains in PostgreSQL, must be completed, and appears in the archive only when `isArchived` is true. Debriefs are stored as relative AgentOS paths on the mission record; the actual Markdown remains in AgentOS and is opened through `/library/doc`.
+
+## AgentOS Integration
+
+`src/lib/agentos.ts` is the central server-side integration layer. It resolves configured paths, reads AgentOS JSON and Markdown, parses registries and ledgers, and returns safe defaults when optional files are absent.
+
+Important filesystem decisions:
+
+- `AGENTOS_ROOT` defaults to `/home/oggie/AI/AgentOS` and can be overridden by environment configuration.
+- Relative document reads are resolved under `AGENTOS_ROOT` and blocked if they escape that root.
+- The raw-file API permits only Markdown and HTML under the configured home path.
+- AgentOS remains readable without importing its contents into PostgreSQL unless queryable mutable state is useful.
+
+External scripts under `scripts/` report heartbeats and host health, index generated content, update agents, seed data, and help start the dashboard. These scripts call the same application APIs used by other integrations.
+
+## Major Design Decisions
+
+### Local-first, hybrid storage
+
+Operational state belongs in PostgreSQL, while durable knowledge stays as transparent files in AgentOS. This avoids duplicating the complete AgentOS knowledge base in the database and keeps debriefs and decisions directly readable outside Mission Control.
+
+### Server rendering by default
+
+Pages read PostgreSQL and AgentOS on the server. Browser-side state is limited to interactions that require it. This keeps filesystem access and database credentials out of the client bundle.
+
+### Path-guarded file access
+
+All AgentOS document reads are constrained to configured roots and expected file types. The browser receives rendered content or guarded raw-file responses rather than unrestricted filesystem access.
+
+### Mission debrief lifecycle
+
+Agents complete missions by writing a result and an AgentOS-relative `debriefPath`. Mission cards and archived missions link that path to the shared Markdown viewer. Archiving changes only `isArchived`; it does not move or delete the debrief file.
+
+### Mission execution freshness
+
+The active Missions board treats PostgreSQL as the source of truth and refreshes read-only state every 20 seconds plus on browser visibility/focus. Current persisted statuses remain unchanged: `pending` is presented as Queued, `active` as Active, `completed` as Awaiting Review, and `failed` as Failed.
+
+Pending cards show elapsed time since `createdAt`. A warning appears when a pending or active mission is at least 45 minutes old. Because the current schema has no claim or start timestamp, an active warning measures total mission age rather than exact running duration. This limitation remains until the separately planned database-backed execution-state component.
+
+Worker visibility is read directly from Hermes' `mission-worker` cron entry and reports its last run, expected next run, enabled state, last status, and last error. This component does not modify the 15-minute schedule, two-tick worker, global temporary handoff, dispatch behavior, or mission records.
+
+### Database-backed execution state and atomic claims
+
+`MissionExecution` is the durable execution-attempt record. It separates execution state from the legacy `Mission.status` compatibility field and supports `queued`, `claimed`, `running`, `completed`, and `failed`. Each attempt can record `claimedAt`, `startedAt`, `heartbeatAt`, `completedAt`, `executionId`, `workerId`, `attempt`, and `error`. A unique `(missionId, attempt)` constraint prevents duplicate attempt numbers, and a unique execution identifier supports reliable callbacks.
+
+Missions and attempts carry explicit execution policy metadata: provider is currently `HERMES`, while mode is `MANUAL` or `AUTO`. Existing missions and missions created through the current UI migrate/default to `MANUAL`. The future dispatcher claim operation selects only matching `AUTO` missions and executions, so enabling that dispatcher cannot silently claim migrated work.
+
+`claimNextMission` uses one PostgreSQL common-table-expression statement with `FOR UPDATE ... SKIP LOCKED`. It selects one eligible Mission, changes exactly one queued attempt to claimed with worker/execution identity and claim/activity timestamps, and updates the compatibility Mission status to active atomically. A 12-caller concurrency test verifies that exactly one caller receives a given mission. Supporting service functions can mark an execution running, record activity, or finish it as completed/failed, but no dispatcher invokes them yet.
+
+The existing Hermes cron worker remains the active compatibility bridge and is intentionally unchanged in this component. It still uses the global `/tmp/mission_worker_status.json` two-tick handoff and updates `Mission.status` directly. Backfilled execution attempts truthfully represent the migration-time state, but the legacy worker does not maintain the new attempt record after migration. The dispatcher cutover must retire that split-write boundary in a later bounded component.
+
+### Capture and promotion lifecycle
+
+Quick Capture reuses the existing `Idea` model and `/api/ideas` route. A capture requires only text and defaults to the explicit `idea` type; the user may instead choose `todo`.
+
+The planned lifecycle is:
+
+```text
+Idea → To-Do → Mission → Review → Archive
+```
+
+Each arrow represents a deliberate, bounded transition:
+
+1. **Idea → To-Do:** update the existing capture record from the explicit `idea` type to `todo`.
+2. **To-Do → Mission:** pass the capture into the existing Mission creation flow and Hermes dispatch workflow. This must not create a parallel mission system or bypass Hermes.
+3. **Mission → Review:** Hermes records mission results and an AgentOS debrief path; completed work remains visible for human review.
+4. **Review → Archive:** the user explicitly archives a reviewed mission. Archival remains human-in-the-loop and persistent.
+
+The first two transitions are implemented. Idea promotion updates the same persisted record from `idea` to `todo`. To-Do promotion opens the existing Mission creation component, submits through `/api/missions`, and marks the capture as promoted only after Mission creation succeeds. Promoted captures remain preserved for lifecycle history but are omitted from the active Ideas list. Mission execution, review, debrief, and archive behavior remain unchanged. Later metadata work will be separated into small additions for project assignment, priority, tags, then search and filtering. These fields must remain optional so capture stays frictionless.
+
+### Explicit archive state
+
+Completed and archived are separate concepts. Completed missions remain on the active mission board until explicitly archived, which supports review before removal from the working view.
+
+### Shared responsive shell
+
+Navigation and layout behavior are centralized in the root layout and sidebar rather than repeated per page. The archive is a first-class navigation route, and mobile responsiveness is handled by the shared shell.
+
+### Workflow-led modernization
+
+Visual work must support Mission Control's operational model: Hermes as the execution gateway, AgentOS as the canonical system of record, Graphify as the knowledge-graph layer, and explicit human review of mission results and debriefs before archival. Foundation tokens and shell responsiveness are complete. The next roadmap work prioritizes mission review and retrieval, Ideas and To-Do capture, and dashboard operational clarity before the command palette.
+
+## Completed Phases
+
+### Original AgentOS Integration Roadmap
+
+- Phase 0: Added guarded AgentOS filesystem readers and established the integration baseline.
+- Phase 1: Added the AgentOS summary widget to the main dashboard.
+- Phase 2: Added agent heartbeat reporting, host-health APIs/reporters, live Hermes calendar data, and Graphify dashboard integration.
+- Phase 3: Added Agents and Projects views backed by AgentOS registry, heartbeat, index, and ledger data.
+- Phase 4: Added recent decisions and knowledge summaries to the dashboard.
+- Phase 5: Added the AgentOS document library with Markdown viewing plus Homelab device and service registry views.
+
+Additional completed workflow work includes mission creation and Kanban presentation, AgentOS-backed agent assignment choices, idea capture, mission result persistence, mission debrief lifecycle support, explicit mission archival, and clickable archived debriefs.
+
+### Mission Control v2 Redesign
+
+Phase 2.1 foundation status:
+
+- Completed: refined global palette and design tokens.
+- Completed: responsive Sidebar and Root Layout with stable desktop/mobile behavior.
+- Completed: Phase 2.1.1 archive system, restart persistence, archive page, clickable archived debrief viewer, and archive search/filtering.
+- Deferred: global command palette, to follow stable mission, capture, and dashboard workflows.
+
+Phase 2.2 is ordered around operational workflow improvements rather than an appearance-first dashboard redesign. Archive search and agent filtering originated as the remaining Phase 2.1.1 item and was completed at the start of Phase 2.2 implementation. Active mission review/filtering, Quick Capture, the explicit Idea → To-Do → Mission promotion workflow, mission-board freshness/worker visibility, and the database-backed execution-state/atomic-claim foundation are complete. Visual dashboard work remains paused while mission execution reliability is developed in bounded components. The deterministic dispatcher and temporary per-mission Hermes executions remain future work. See `docs/phase2-plan.md` for the authoritative roadmap and checklist.
+
+## Operational Notes and Known Limitations
+
+- There is no user authentication layer. Deployment beyond a trusted local network requires an authentication and authorization review.
+- The mission creation route contains a shared-secret check but currently does not reject a failed check; this should be treated as unauthenticated behavior.
+- The current ESLint 9 configuration fails before source evaluation with a circular configuration serialization error.
+- Production builds succeed but emit a non-fatal Turbopack NFT trace warning caused by broad filesystem access traced through `src/lib/agentos.ts`.
+- The dashboard depends on PostgreSQL and local AgentOS paths being available to the Next.js server process.
+- Reporter freshness depends on external scheduling; Mission Control does not itself run every reporter continuously.
+
+## Build and Runtime
+
+### Mandatory production verification sequence
+
+Use this sequence for every production verification:
+
+1. Stop the running Next.js server.
+2. Run the production build and wait for successful completion.
+3. Start the server from the completed build.
+4. Perform live UI verification.
+
+Do not run `next build` while a production server is using the same `.next` directory. Replacing generated output beneath a running server can leave its in-memory asset references out of sync with the files on disk, causing JavaScript or CSS asset failures after refresh.
+
+Common commands:
+
+```bash
+npm run dev
+npm run build
+npm run start -- -p 3000
+npm run db:push
+```
+
+Required environment configuration includes `DATABASE_URL`. Integrations may also use `INTERNAL_API_SECRET`, `AGENTOS_ROOT`, and the reporter-specific Mission Control URL or secret settings documented in `.env.example` and the reporter scripts.
+
+When changing architecture, persistence, routes, or phase status, update this document together with the relevant implementation and the AgentOS project memory log.

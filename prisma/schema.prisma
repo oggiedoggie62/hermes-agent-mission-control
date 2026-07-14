@@ -26,33 +26,88 @@ model AgentState {
 /// A unit of work assigned to an agent. Agents pick up pending missions,
 /// run them, and update status to "completed" or "failed".
 model Mission {
-  id          String    @id @default(uuid())
-  agentId     String
-  title       String
-  description String
-  status      String    @default("pending")
-  priority    String    @default("medium")
-  result      String?
-  debriefPath String?
-  createdAt   DateTime  @default(now())
-  completedAt DateTime?
+  id                String             @id @default(uuid())
+  agentId           String
+  title             String
+  description       String
+  status            String             @default("pending")
+  priority          String             @default("medium")
+  result            String?
+  debriefPath       String?
+  isArchived        Boolean            @default(false)
+  executionProvider ExecutionProvider  @default(HERMES)
+  executionMode     ExecutionMode      @default(MANUAL)
+  createdAt         DateTime           @default(now())
+  completedAt       DateTime?
+  executions        MissionExecution[]
 
   @@index([agentId])
   @@index([status])
+  @@index([executionProvider, executionMode, status])
 }
 
-/// Ideas your agents generate for you to review.
+enum ExecutionProvider {
+  HERMES
+}
+
+enum ExecutionMode {
+  MANUAL
+  AUTO
+}
+
+enum MissionExecutionStatus {
+  queued
+  claimed
+  running
+  completed
+  failed
+}
+
+/// One durable execution attempt for a Mission. The future dispatcher may claim
+/// only AUTO missions; migrated and UI-created missions default to MANUAL.
+model MissionExecution {
+  id          String                 @id @default(uuid())
+  missionId   String
+  mission     Mission                @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  status      MissionExecutionStatus @default(queued)
+  provider    ExecutionProvider      @default(HERMES)
+  mode        ExecutionMode          @default(MANUAL)
+  claimedAt   DateTime?
+  startedAt   DateTime?
+  heartbeatAt DateTime?
+  completedAt DateTime?
+  executionId String?                @unique
+  workerId    String?
+  attempt     Int                    @default(1)
+  error       String?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  @@unique([missionId, attempt])
+  @@index([status, mode, createdAt])
+  @@index([missionId, status])
+  @@index([heartbeatAt])
+}
+
+enum CaptureType {
+  idea
+  todo
+}
+
+/// Ideas and personal To-Dos captured for later review.
 model Idea {
-  id          String   @id @default(uuid())
+  id          String      @id @default(uuid())
   title       String
   description String?
+  type        CaptureType @default(idea)
   category    String?
   source      String?
-  status      String?  @default("pending")
-  timestamp   DateTime @default(now())
+  status      String?     @default("pending")
+  timestamp   DateTime    @default(now())
 
   @@index([category])
   @@index([status])
+  @@index([type])
 }
 
 /// Generic key-value store for agent-specific config and scratch data.
@@ -64,14 +119,14 @@ model DataStore {
 }
 
 model HostHealth {
-  hostname  String   @id
-  cpuUsage  Float
-  ramUsage  Float
-  diskUsage Float
-  gpuTemp   Float?
-  nasConnected Boolean @default(false)
-  nasAvailable Float @default(0)
-  updatedAt DateTime @updatedAt
+  hostname     String   @id
+  cpuUsage     Float
+  ramUsage     Float
+  diskUsage    Float
+  gpuTemp      Float?
+  nasConnected Boolean  @default(false)
+  nasAvailable Float    @default(0)
+  updatedAt    DateTime @updatedAt
 }
 
 model GeneratedFile {

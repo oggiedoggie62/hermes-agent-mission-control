@@ -8,6 +8,8 @@
     "build": "prisma generate && next build",
     "postinstall": "prisma generate",
     "start": "next start",
+    "dispatcher": "tsx scripts/mission-dispatcher.ts",
+    "test:dispatcher": "tsx scripts/test-mission-dispatcher.ts",
     "lint": "eslint",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",

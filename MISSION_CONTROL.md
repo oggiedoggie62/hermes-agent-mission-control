@@ -142,9 +142,35 @@ Worker visibility is read directly from Hermes' `mission-worker` cron entry and 
 
 Missions and attempts carry explicit execution policy metadata: provider is currently `HERMES`, while mode is `MANUAL` or `AUTO`. Existing missions and missions created through the current UI migrate/default to `MANUAL`. The future dispatcher claim operation selects only matching `AUTO` missions and executions, so enabling that dispatcher cannot silently claim migrated work.
 
-`claimNextMission` uses one PostgreSQL common-table-expression statement with `FOR UPDATE ... SKIP LOCKED`. It selects one eligible Mission, changes exactly one queued attempt to claimed with worker/execution identity and claim/activity timestamps, and updates the compatibility Mission status to active atomically. A 12-caller concurrency test verifies that exactly one caller receives a given mission. Supporting service functions can mark an execution running, record activity, or finish it as completed/failed, but no dispatcher invokes them yet.
+`claimNextMission` uses one PostgreSQL common-table-expression statement with `FOR UPDATE ... SKIP LOCKED`. It selects one eligible Mission, changes exactly one queued attempt to claimed with worker/execution identity and claim/activity timestamps, and updates the compatibility Mission status to active atomically. A 12-caller concurrency test verifies that exactly one caller receives a given mission. Supporting service functions mark an execution running, record activity, or finish it as completed/failed; the deterministic dispatcher now uses the claim, running, and finish operations.
 
-The existing Hermes cron worker remains the active compatibility bridge and is intentionally unchanged in this component. It still uses the global `/tmp/mission_worker_status.json` two-tick handoff and updates `Mission.status` directly. Backfilled execution attempts truthfully represent the migration-time state, but the legacy worker does not maintain the new attempt record after migration. The dispatcher cutover must retire that split-write boundary in a later bounded component.
+The existing Hermes cron worker remains the compatibility bridge and is intentionally unchanged in source. It still uses the global `/tmp/mission_worker_status.json` two-tick handoff and updates `Mission.status` directly. Backfilled execution attempts truthfully represent the migration-time state, but the legacy worker does not maintain the new attempt record after migration. While the deterministic dispatcher is active, the cron entry is disabled to avoid competing claims; the entry and script remain intact for immediate rollback.
+
+### Deterministic mission dispatcher
+
+`scripts/mission-dispatcher.ts` is a lightweight, non-LLM scheduler. It polls every 45 seconds by default, with an allowed configuration range of 30 to 60 seconds, and calls the existing atomic PostgreSQL claim operation. A claim is restricted by that service to explicit HERMES/AUTO mission and attempt pairs. The dispatcher supplies a stable process identity as `workerId` and a new UUID as `executionId`, so both identities are recorded as part of the atomic claim.
+
+After a successful claim, all subsequent work (mission load, prompt preparation, Hermes launch, debrief validation, and completion) runs inside one guarded failure boundary. Any failure after claim transitions the execution and mission to `failed` with a persisted error so capacity is released. This is not general stale-claim recovery and does not retry.
+
+The dispatcher serially launches one fresh `hermes --oneshot` process for each claim and waits for it to exit before polling again. A database-serialized global active-count check also enforces concurrency one across multiple dispatcher processes. The temporary execution receives the claimed mission and execution identities plus a unique AgentOS debrief path. Completion requires exit code zero, a non-empty result summary, and a readable debrief with non-empty Summary, Work Performed, Evidence, and Decisions Made sections. Any missing or invalid output, nonzero exit, or launch failure marks the durable attempt and compatibility Mission record failed. This component does not retry failed work or recover stale claims after a process crash outside the post-claim boundary.
+
+The legacy `mission-worker` cron job, its schedule, script, and global temporary-file handoff remain installed as the rollback path. Its cron entry is disabled while the dispatcher is active because its legacy query does not participate in atomic execution claims. Rollback consists of stopping the dispatcher and re-enabling the preserved cron entry. The cron worker must not be removed until a separately authorized cutover component.
+
+`npm run test:dispatcher` refuses the normal Mission Control database. It requires `DISPATCHER_TEST_DATABASE_URL` to identify a separate, empty database whose name ends in `_test`. The controlled no-model-cost harness starts two dispatcher processes and verifies queued-to-claimed-to-running transitions, persisted execution and worker identity, global concurrency one, valid-debrief completion, missing-debrief failure, immediate post-claim failure releasing capacity so a subsequent AUTO mission can be claimed, and temporary-row cleanup.
+
+#### Runtime status (as of final verification)
+
+- **Intended runtime state while dispatcher phase is active:** production Next.js on port 3000 from a completed build, plus `npm run dispatcher`, with legacy `mission-worker` cron disabled.
+- **Startup instructions:** see `MC-server-launch.md` (database, server, dispatcher, health checks, stop).
+- **Last successful production verification:** 2026-07-20 19:29–19:30 MDT.
+  - Isolated harness: 5/5 PASS (including post-claim failure releasing capacity and subsequent claim).
+  - `npm run build` succeeded (known non-fatal Turbopack NFT warning retained).
+  - `/api/health` → `{"ok":true,"db":"connected"}`.
+  - `/api/missions/state` → HTTP 200; `worker.enabled=false`; 2 non-archived missions observed.
+  - `/missions` → HTTP 200.
+  - Dispatcher process remained running for a full 45s+ idle poll interval after start (`poll=45s concurrency=1 legacy_worker=preserved`).
+  - Legacy `mission-worker` remained disabled.
+- Prior verification: 2026-07-20 earlier session (four core harness assertions + production idle poll). Post-claim failure-boundary fix and fifth harness assertion completed after Codex review.
 
 ### Capture and promotion lifecycle
 
@@ -199,7 +225,7 @@ Phase 2.1 foundation status:
 - Completed: Phase 2.1.1 archive system, restart persistence, archive page, clickable archived debrief viewer, and archive search/filtering.
 - Deferred: global command palette, to follow stable mission, capture, and dashboard workflows.
 
-Phase 2.2 is ordered around operational workflow improvements rather than an appearance-first dashboard redesign. Archive search and agent filtering originated as the remaining Phase 2.1.1 item and was completed at the start of Phase 2.2 implementation. Active mission review/filtering, Quick Capture, the explicit Idea → To-Do → Mission promotion workflow, mission-board freshness/worker visibility, and the database-backed execution-state/atomic-claim foundation are complete. Visual dashboard work remains paused while mission execution reliability is developed in bounded components. The deterministic dispatcher and temporary per-mission Hermes executions remain future work. See `docs/phase2-plan.md` for the authoritative roadmap and checklist.
+Phase 2.2 is ordered around operational workflow improvements rather than an appearance-first dashboard redesign. Archive search and agent filtering originated as the remaining Phase 2.1.1 item and was completed at the start of Phase 2.2 implementation. Active mission review/filtering, Quick Capture, the explicit Idea → To-Do → Mission promotion workflow, mission-board freshness/worker visibility, the database-backed execution-state/atomic-claim foundation, and the lightweight deterministic dispatcher are complete. Visual dashboard work remains paused while mission execution reliability is developed in bounded components. Retries, stale recovery, and parallel execution remain future work. See `docs/phase2-plan.md` for the authoritative roadmap and checklist.
 
 ## Operational Notes and Known Limitations
 

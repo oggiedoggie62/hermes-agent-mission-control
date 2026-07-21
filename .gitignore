@@ -56,3 +56,6 @@ next-env.d.ts
 /data/*.json
 !/data/example-agent-state.json
 !/data/.gitkeep
+
+# Graphify generated output
+/graphify-out/

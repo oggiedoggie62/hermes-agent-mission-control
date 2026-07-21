@@ -71,8 +71,14 @@ Phase 2.2 prioritizes daily operational value over appearance-only redesign. Wor
    - [x] Add database-backed execution attempts with queued, claimed, running, completed, and failed states plus durable timing, identity, worker, attempt, heartbeat/activity, and error fields.
    - [x] Add an atomic PostgreSQL claim operation and verify that 12 concurrent workers produce exactly one claimant.
    - [x] Add `HERMES` execution provider and `MANUAL | AUTO` execution mode metadata, migrating existing missions to `MANUAL` so the future dispatcher cannot select them accidentally.
-   - [ ] Retire the legacy global temporary-file handoff only when the deterministic dispatcher is ready; the current cron bridge remains unchanged for compatibility.
-   - [ ] Add the deterministic dispatcher, temporary per-mission Hermes executions, recovery, and controlled concurrency only after database-backed execution state is stable.
+   - [x] Add and verify a lightweight deterministic dispatcher that polls explicit HERMES/AUTO work every 45 seconds, uses the atomic claim operation, records dispatcher/execution identity, validates result/debrief output, launches one temporary Hermes execution, and enforces database-backed global concurrency 1.
+     - Post-claim guarded failure boundary: any failure after claim fails the execution/mission and releases capacity (no retries; not general stale recovery).
+     - Isolated harness assertions: queued→claimed→running, concurrency 1, valid debrief completion, missing debrief failure, post-claim failure then subsequent claim.
+     - Production verification timestamps are recorded in `MISSION_CONTROL.md` and the AgentOS work log after each successful stop → build → start → live check.
+   - [x] Preserve the legacy global temporary-file cron worker unchanged as a rollback path; disable its cron entry while the dispatcher is active to prevent competing claims.
+   - [ ] Retire the legacy global temporary-file handoff only in a separately authorized cutover.
+   - [ ] Add retries and stale-execution recovery in later bounded reliability components.
+   - [ ] Increase controlled concurrency only after single-execution dispatch is stable.
 2. **Mission review and retrieval**
    - [x] Complete archive search and filtering from Phase 2.1.1 at the start of Phase 2.2 implementation.
    - [x] Add active-board search plus agent, priority, and status filtering.

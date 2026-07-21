@@ -1,0 +1,161 @@
+/* agent: codex | model: gpt-5 | date: 2026-07-15 */
+import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { hostname } from "node:os";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { claimNextMission, finishExecution, markExecutionRunning } from "../src/lib/mission-execution";
+import { prisma } from "../src/lib/prisma";
+
+const pollSeconds = Number(process.env.MISSION_DISPATCH_POLL_SECONDS ?? "45");
+if (!Number.isInteger(pollSeconds) || pollSeconds < 30 || pollSeconds > 60) {
+  throw new Error("MISSION_DISPATCH_POLL_SECONDS must be an integer from 30 to 60");
+}
+const concurrencyLimit = Number(process.env.MISSION_DISPATCH_CONCURRENCY ?? "1");
+if (concurrencyLimit !== 1) {
+  throw new Error("MISSION_DISPATCH_CONCURRENCY must be 1 in this rollout phase");
+}
+
+const dispatcherId = process.env.MISSION_DISPATCHER_ID?.trim() || `mission-dispatcher:${hostname()}:${process.pid}`;
+const hermesBin = process.env.HERMES_BIN?.trim() || "/home/oggie/.local/bin/hermes";
+const agentosRoot = process.env.AGENTOS_ROOT?.trim() || "/home/oggie/AI/AgentOS";
+let stopping = false;
+let wakeFromSleep: (() => void) | null = null;
+let sleepTimer: NodeJS.Timeout | null = null;
+
+function validateDebrief(content: string) {
+  const requiredSections = ["Summary", "Work Performed", "Evidence", "Decisions Made"];
+  for (const section of requiredSections) {
+    const pattern = new RegExp(`^##\\s+${section}\\s*$`, "m");
+    if (!pattern.test(content)) return `Debrief is missing required section: ${section}`;
+    const body = content.match(
+      new RegExp(`^##\\s+${section}\\s*$([\\s\\S]*?)(?=^##\\s|(?![\\s\\S]))`, "m"),
+    )?.[1].trim();
+    if (!body) return `Debrief section is empty: ${section}`;
+  }
+  return null;
+}
+
+async function readValidDebrief(absolutePath: string) {
+  try {
+    const content = await readFile(absolutePath, "utf8");
+    const validationError = validateDebrief(content);
+    return validationError ? { error: validationError } : { content };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { error: `Expected debrief is missing or unreadable: ${message}` };
+  }
+}
+
+function runHermes(prompt: string): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(hermesBin, ["--oneshot", prompt], {
+      cwd: "/home/oggie/mission-control",
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => { stdout = (stdout + chunk).slice(-32_000); });
+    child.stderr.on("data", (chunk) => { stderr = (stderr + chunk).slice(-32_000); });
+    child.once("error", reject);
+    child.once("close", (code) => resolve({ code, stdout: stdout.trim(), stderr: stderr.trim() }));
+  });
+}
+
+async function dispatchOnce() {
+  const executionId = randomUUID();
+  const claim = await claimNextMission({ workerId: dispatcherId, executionId, concurrencyLimit });
+  if (!claim) return;
+
+  let missionId: string | null = null;
+
+  try {
+    // Test-only: inject a single post-claim failure before any Hermes work.
+    // Used by the isolated no-model-cost harness to prove capacity is released.
+    if (process.env.MISSION_DISPATCH_TEST_FAIL_AFTER_CLAIM === "once") {
+      process.env.MISSION_DISPATCH_TEST_FAIL_AFTER_CLAIM = "";
+      throw new Error("Injected post-claim failure for controlled verification");
+    }
+
+    const mission = await prisma.mission.findUniqueOrThrow({ where: { id: claim.missionId } });
+    missionId = mission.id;
+
+    const debriefName = `${mission.id}-${executionId}.debrief.md`;
+    const debriefPath = `Logs/missions/${debriefName}`;
+    const absoluteDebriefPath = path.join(agentosRoot, debriefPath);
+    const prompt = [
+      "You are a temporary Hermes execution for one claimed Mission Control mission.",
+      `Mission ID: ${mission.id}`,
+      `Execution ID: ${executionId}`,
+      `Title: ${mission.title}`,
+      `Priority: ${mission.priority}`,
+      `Description: ${mission.description}`,
+      "Complete only this mission.",
+      `Write a debrief to ${absoluteDebriefPath}.`,
+      "Include Summary, Work Performed, Evidence, and Decisions Made sections.",
+      "Your final response must be a concise result summary.",
+    ].join("\n");
+
+    console.log(`[${new Date().toISOString()}] claimed mission=${mission.id} execution=${executionId} dispatcher=${dispatcherId}`);
+    await markExecutionRunning(executionId);
+    const result = await runHermes(prompt);
+    if (result.code === 0) {
+      const debrief = await readValidDebrief(absoluteDebriefPath);
+      if (!result.stdout) {
+        await finishExecution(executionId, {
+          status: "failed",
+          error: "Hermes exited successfully but returned no result summary",
+        });
+        console.error(`[${new Date().toISOString()}] failed mission=${missionId} execution=${executionId}: missing result summary`);
+        return;
+      }
+      if (debrief.error) {
+        await finishExecution(executionId, { status: "failed", error: debrief.error });
+        console.error(`[${new Date().toISOString()}] failed mission=${missionId} execution=${executionId}: ${debrief.error}`);
+        return;
+      }
+      await finishExecution(executionId, {
+        status: "completed",
+        result: result.stdout,
+        debriefPath,
+      });
+      console.log(`[${new Date().toISOString()}] completed mission=${missionId} execution=${executionId}`);
+      return;
+    }
+    const error = result.stderr || result.stdout || `Hermes exited with code ${result.code}`;
+    await finishExecution(executionId, { status: "failed", error });
+    console.error(`[${new Date().toISOString()}] failed mission=${missionId} execution=${executionId}: ${error}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await finishExecution(executionId, { status: "failed", error: message });
+    console.error(`[${new Date().toISOString()}] failed mission=${missionId ?? "unknown"} execution=${executionId}: ${message}`);
+  }
+}
+
+async function main() {
+  console.log(`dispatcher=${dispatcherId} poll=${pollSeconds}s concurrency=${concurrencyLimit} legacy_worker=preserved`);
+  while (!stopping) {
+    await dispatchOnce().catch((error) => console.error(`[${new Date().toISOString()}] poll failed:`, error));
+    if (!stopping) {
+      await new Promise<void>((resolve) => {
+        wakeFromSleep = resolve;
+        sleepTimer = setTimeout(resolve, pollSeconds * 1000);
+      });
+      wakeFromSleep = null;
+      sleepTimer = null;
+    }
+  }
+  await prisma.$disconnect();
+}
+
+function stop() {
+  stopping = true;
+  if (sleepTimer) clearTimeout(sleepTimer);
+  wakeFromSleep?.();
+}
+
+process.once("SIGINT", stop);
+process.once("SIGTERM", stop);
+
+void main();

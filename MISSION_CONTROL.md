@@ -158,18 +158,53 @@ The legacy `mission-worker` cron job, its schedule, script, and global temporary
 
 `npm run test:dispatcher` refuses the normal Mission Control database. It requires `DISPATCHER_TEST_DATABASE_URL` to identify a separate, empty database whose name ends in `_test`. The controlled no-model-cost harness starts two dispatcher processes and verifies queued-to-claimed-to-running transitions, persisted execution and worker identity, global concurrency one, valid-debrief completion, missing-debrief failure, immediate post-claim failure releasing capacity so a subsequent AUTO mission can be claimed, and temporary-row cleanup.
 
-#### Runtime status (as of final verification)
+### Deployment and operations (systemd user services)
 
-- **Intended runtime state while dispatcher phase is active:** production Next.js on port 3000 from a completed build, plus `npm run dispatcher`, with legacy `mission-worker` cron disabled.
-- **Startup instructions:** see `MC-server-launch.md` (database, server, dispatcher, health checks, stop).
-- **Last successful production verification:** 2026-07-20 19:29–19:30 MDT.
-  - Isolated harness: 5/5 PASS (including post-claim failure releasing capacity and subsequent claim).
-  - `npm run build` succeeded (known non-fatal Turbopack NFT warning retained).
-  - `/api/health` → `{"ok":true,"db":"connected"}`.
-  - `/api/missions/state` → HTTP 200; `worker.enabled=false`; 2 non-archived missions observed.
-  - `/missions` → HTTP 200.
-  - Dispatcher process remained running for a full 45s+ idle poll interval after start (`poll=45s concurrency=1 legacy_worker=preserved`).
-  - Legacy `mission-worker` remained disabled.
+Long-running production ownership is **not** Hermes Desktop. Two independent systemd **user** services own production:
+
+- `mission-control.service` — Next.js production server on port 3000 (`next start -p 3000` from a prebuilt `.next`)
+- `mission-dispatcher.service` — `tsx scripts/mission-dispatcher.ts` with `MISSION_DISPATCH_CONCURRENCY=1`
+
+Unit sources: `deploy/systemd/user/`. Installed path: `~/.config/systemd/user/`.
+
+Both services:
+
+- Use `WorkingDirectory=/home/oggie/mission-control`
+- Run `scripts/wait-for-postgres.sh` before start (best-effort `docker start mission-control-pg`, then TCP wait on `127.0.0.1:5432`)
+- Load secrets from the existing gitignored `.env` via `scripts/systemd-exec.cjs`
+  - Literal dotenv parsing only (no shell `eval`, no `$VAR` / `$(cmd)` / backtick expansion)
+  - Requires owner `oggie` and mode **0600**; refuses group/other-readable files
+  - Never logs secret values; never stores secrets in unit files
+- Use `Restart=on-failure`, `RestartSec=5`, `KillMode=control-group`
+- Bound restart loops with `StartLimitIntervalSec=300` and `StartLimitBurst=5`
+- Do **not** run `npm run build` in `ExecStart`
+- Do **not** require each other; both primarily need PostgreSQL and can restart independently
+
+Operator commands and journal access are documented in `MC-server-launch.md`.
+
+#### Runtime status (operations verification 2026-07-20 20:24–20:25 MDT)
+
+Codex review fixes applied and re-verified:
+
+- Replaced unsafe shell/`eval` env loader with `scripts/systemd-exec.cjs` literal parser + spawn.
+- No-secret fixture test `scripts/test-systemd-exec-env.cjs` PASS (literal `$()`, backticks, spaces, equals; mode 0600 gate).
+- `.env` corrected to mode **0600** (`stat`: `oggie 600`).
+- Units gained `StartLimitIntervalSec=300` / `StartLimitBurst=5`; controlled `/bin/false` test reached `failed` after burst (NRestarts=5), then production units restored.
+- Stop → `npm run build` → install units (`diff` exact match) → `daemon-reload` → start both.
+- `/api/health` → `{"ok":true,"db":"connected"}`; `/api/missions/state` and `/missions` HTTP 200.
+- Dispatcher survived full 45s+ idle poll; `worker.enabled=false`.
+- Ancestry under user systemd (`systemd(1)---systemd(1801)---...`); no Hermes Desktop.
+- Services remain `enabled` + `active`.
+
+#### Prior operations verification 2026-07-20 19:51–19:53 MDT
+
+- Initial systemd cutover from Hermes-owned processes (superseded by 20:24 review-fix verification above).
+
+#### Runtime status (dispatcher functional verification)
+
+- **Intended runtime state while dispatcher phase is active:** production Next.js on port 3000 from a completed build, plus the deterministic dispatcher, with legacy `mission-worker` cron disabled. Prefer systemd user services over manual/Hermes terminals.
+- **Startup instructions:** see `MC-server-launch.md`.
+- **Last successful dispatcher functional verification:** 2026-07-20 19:29–19:30 MDT (isolated 5/5 harness + production idle poll under Hermes-owned processes before systemd cutover).
 - Prior verification: 2026-07-20 earlier session (four core harness assertions + production idle poll). Post-claim failure-boundary fix and fifth harness assertion completed after Codex review.
 
 ### Capture and promotion lifecycle

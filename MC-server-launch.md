@@ -1,40 +1,102 @@
 # Mission Control Server Launch
 
-This file is startup instructions only. It does not assert that services are currently running.
-Runtime verification results and timestamps live in `MISSION_CONTROL.md` and the AgentOS work log.
+This file is startup and operations instructions. It does not by itself prove services are running.
+Live verification timestamps belong in `MISSION_CONTROL.md` and the AgentOS work log.
 
-## Prerequisites
+## Preferred: systemd user services
+
+Mission Control production processes are owned by the user systemd instance, not Hermes Desktop.
+
+### Install / reload units (after unit file changes)
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp /home/oggie/mission-control/deploy/systemd/user/mission-control.service \
+   /home/oggie/mission-control/deploy/systemd/user/mission-dispatcher.service \
+   ~/.config/systemd/user/
+systemctl --user daemon-reload
+```
+
+Canonical unit sources live in the repo under `deploy/systemd/user/`.
+Installed copies live under `~/.config/systemd/user/`.
+
+### Control commands
+
+```bash
+systemctl --user start mission-control
+systemctl --user stop mission-control
+systemctl --user restart mission-control
+systemctl --user status mission-control
+
+systemctl --user start mission-dispatcher
+systemctl --user stop mission-dispatcher
+systemctl --user restart mission-dispatcher
+systemctl --user status mission-dispatcher
+
+systemctl --user enable mission-control mission-dispatcher
+systemctl --user disable mission-control mission-dispatcher
+```
+
+### Logs
+
+```bash
+journalctl --user -u mission-control -f
+journalctl --user -u mission-dispatcher -f
+journalctl --user -u mission-control -n 100 --no-pager
+journalctl --user -u mission-dispatcher -n 100 --no-pager
+```
+
+### Deploy a new build
+
+Do **not** build inside `ExecStart`. Build first, then restart:
+
+```bash
+cd /home/oggie/mission-control
+systemctl --user stop mission-control mission-dispatcher
+npm run build
+systemctl --user start mission-control mission-dispatcher
+# or: systemctl --user restart mission-control mission-dispatcher
+```
+
+### Prerequisites
 
 ```bash
 docker start mission-control-pg
-cd /home/oggie/mission-control
 ```
 
-## Start production dashboard
+Each service runs `scripts/wait-for-postgres.sh` before start (starts the container if possible and waits for TCP `127.0.0.1:5432`).
 
-Use a completed production build (do not build over a running server):
+### Secrets
+
+Both services load `/home/oggie/mission-control/.env` through `scripts/systemd-exec.cjs`.
+
+Requirements:
+
+- `.env` must be **owned by `oggie`**
+- `.env` mode must be **`0600`** (`chmod 600 .env`)
+- The launcher **refuses to start** if group/other bits are set
+- Secrets must **never** be stored in unit files
+- Values are loaded **literally** (no shell `eval`, no `$VAR` expansion, no `$(command)` execution)
 
 ```bash
-# If a server is already running, stop it first (Ctrl+C or kill the next/npm process).
-npm run build
-npm run start -- -p 3000
+stat -c '%U %a %n' /home/oggie/mission-control/.env
+# expected: oggie 600 /home/oggie/mission-control/.env
 ```
 
-Keep that terminal open. Open: <http://localhost:3000>
+### Restart rate limits
 
-## Start deterministic dispatcher (separate process)
+Both units set:
 
-In another terminal, after the dashboard is healthy:
-
-```bash
-cd /home/oggie/mission-control
-npm run dispatcher
+```ini
+StartLimitIntervalSec=300
+StartLimitBurst=5
+Restart=on-failure
+RestartSec=5
 ```
 
-The dispatcher polls AUTO HERMES missions every 45 seconds by default (30–60 allowed).
-Leave the legacy `mission-worker` cron disabled while this dispatcher is active.
+Repeated immediate failures place the service in a failed/start-limit state rather than restarting forever.
 
-## Health checks
+### Health checks
 
 ```bash
 curl -sS http://localhost:3000/api/health
@@ -42,15 +104,39 @@ curl -sS -o /dev/null -w '%{http_code}\n' http://localhost:3000/api/missions/sta
 curl -sS -o /dev/null -w '%{http_code}\n' http://localhost:3000/missions
 ```
 
-Healthy dashboard health body:
+Healthy health body:
 
 ```json
 {"ok":true,"db":"connected"}
 ```
 
-## Stop
+### Independence
 
-1. Stop the dispatcher terminal with `Ctrl+C`.
-2. Stop the dashboard terminal with `Ctrl+C`.
+- `mission-control` and `mission-dispatcher` do **not** require each other.
+- Both require PostgreSQL.
+- Either service can be restarted alone.
 
-PostgreSQL can remain running via Docker unless you intentionally stop it.
+### Legacy worker
+
+Leave the Hermes `mission-worker` cron **disabled** while `mission-dispatcher` is active.
+
+### Linger note
+
+`loginctl show-user oggie -p Linger` may already report `Linger=yes` on this host.
+Linger keeps user services running after logout / before login.
+Do not change linger without reviewing security implications (persistent user services, broader attack surface when logged out).
+
+## Manual fallback (not preferred)
+
+Only for debugging when systemd units are stopped:
+
+```bash
+docker start mission-control-pg
+cd /home/oggie/mission-control
+npm run build
+npm run start -- -p 3000
+# other terminal:
+npm run dispatcher
+```
+
+Manual processes die when the owning terminal/Hermes session closes. Prefer systemd.

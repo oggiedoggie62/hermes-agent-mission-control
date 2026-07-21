@@ -1,0 +1,32 @@
+[Unit]
+Description=Mission Control deterministic Hermes mission dispatcher
+Documentation=file:///home/oggie/mission-control/MC-server-launch.md
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+# Independent of the web service: both primarily need PostgreSQL.
+# Do not BindsTo/Requires mission-control.service so either can restart alone.
+
+[Service]
+Type=simple
+WorkingDirectory=/home/oggie/mission-control
+Environment=NODE_ENV=production
+Environment=PATH=/home/oggie/mission-control/node_modules/.bin:/home/oggie/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=MISSION_DISPATCH_CONCURRENCY=1
+# Secrets and AGENTOS_ROOT/HERMES paths come from project .env via systemd-exec.cjs.
+# .env must be owned by the service user and mode 0600.
+ExecStartPre=/home/oggie/mission-control/scripts/wait-for-postgres.sh
+ExecStart=/usr/bin/node /home/oggie/mission-control/scripts/systemd-exec.cjs /home/oggie/mission-control/node_modules/.bin/tsx /home/oggie/mission-control/scripts/mission-dispatcher.ts
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=60
+TimeoutStopSec=30
+KillMode=control-group
+KillSignal=SIGTERM
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mission-dispatcher
+
+[Install]
+WantedBy=default.target

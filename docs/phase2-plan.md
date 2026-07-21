@@ -76,6 +76,11 @@ Phase 2.2 prioritizes daily operational value over appearance-only redesign. Wor
      - Isolated harness assertions: queued→claimed→running, concurrency 1, valid debrief completion, missing debrief failure, post-claim failure then subsequent claim.
      - Production verification timestamps are recorded in `MISSION_CONTROL.md` and the AgentOS work log after each successful stop → build → start → live check.
    - [x] Preserve the legacy global temporary-file cron worker unchanged as a rollback path; disable its cron entry while the dispatcher is active to prevent competing claims.
+   - [x] **Deployment & Operations:** systemd user services for Mission Control web and deterministic dispatcher so production survives Hermes Desktop/terminal exit.
+     - Units: `mission-control.service`, `mission-dispatcher.service` under `~/.config/systemd/user/` (sources in `deploy/systemd/user/`).
+     - Independent services (no mutual Requires); both preflight-wait for PostgreSQL; secrets from existing `.env` via `scripts/systemd-exec.cjs` (literal load, mode 0600 required).
+     - Restart bounds: `StartLimitIntervalSec=300`, `StartLimitBurst=5`, `Restart=on-failure`, `RestartSec=5`.
+     - Re-verified 2026-07-20 20:24 MDT after Codex review fixes: health/state/missions HTTP 200, full dispatcher poll interval, user-systemd ancestry, `.env` mode 0600, installed units match repo, start-limit behavior proven then restored.
    - [ ] Retire the legacy global temporary-file handoff only in a separately authorized cutover.
    - [ ] Add retries and stale-execution recovery in later bounded reliability components.
    - [ ] Increase controlled concurrency only after single-execution dispatch is stable.

@@ -102,6 +102,13 @@ Phase 2.2 prioritizes daily operational value over appearance-only redesign. Wor
    - [ ] Add Ideas/To-Dos search and filtering after the metadata and lifecycle transitions are stable.
    - Keep Hermes as the execution gateway and AgentOS as the canonical system of record where applicable.
 4. **Dashboard operational usability**
+   - [x] **Operations Dashboard (home):** surface “what needs attention” from live mission/health/service data — mission status counts, actionable exceptions (awaiting review, failed, stalled >45m, dispatcher/web/DB/legacy-worker problems), compact system health, and workflow entry points (create mission, review missions, Ideas/To-Dos, archive).
+     - Reuses Prisma mission/idea queries, `/api/health` semantics, Hermes cron worker metadata, and `systemctl --user is-active mission-dispatcher` for service health.
+     - Distinguishes authoritative zero values from unavailable mission and Ideas/To-Do reads; unavailable values render as `—` and create Needs Attention entries.
+     - Reads agent state and host health independently with the same availability contract, so either source may fail without erasing valid data from the other; unavailable legacy KPI values never render as zero.
+     - Treats inactive/failed health as down and unqueryable/timeout/transitional health as unknown; both states are actionable and visibly labeled.
+     - Reuses one authoritative agent-choice helper for the Dashboard and `/missions` New Mission modals.
+     - Targeted semantics include PostgreSQL down/unknown attention, dispatcher down attention, shared modal choices, independent agent/host failures, and authoritative zero behavior. Controlled live failure states verified 2026-07-20. No charts, Command Palette, lifecycle, dispatcher, or systemd architecture changes.
    - Prioritize actionable status, exceptions, recent decisions, and workflow entry points.
    - Add or refactor shared cards and health presentation only when they improve operational clarity.
 5. **Command Palette**

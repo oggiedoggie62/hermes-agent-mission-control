@@ -1,38 +1,20 @@
-/* agent: codex | model: gpt-5 | date: 2026-07-14 */
+/* agent: codex | model: gpt-5.5 | date: 2026-07-20 */
 import { prisma } from "@/lib/prisma";
 import { Clock, CheckCircle2, Circle, AlertCircle } from "lucide-react";
 import { CreateMissionButton } from "../../components/create-mission-button";
-import { getAgents } from "@/lib/agentos";
+import { getMissionAgentChoices } from "@/lib/mission-agents";
 import { KanbanClient } from "./kanban-client";
 
 export const dynamic = "force-dynamic";
 
 export default async function MissionsPage() {
-  const [missions, registry] = await Promise.all([
+  const [missions, agents] = await Promise.all([
     prisma.mission.findMany({
       where: { isArchived: false },
       orderBy: { createdAt: "desc" }
     }),
-    getAgents(),
+    getMissionAgentChoices(),
   ]);
-
-  // Build agent list from AgentOS registry (always populated)
-  const registryAgents = registry
-    ? Object.entries(registry.agents).map(([id, a]) => ({
-        id,
-        name: a.name,
-        emoji: "🤖",
-      }))
-    : [];
-
-  // Add sub-agent profiles that respond to kanban requests (Hermes profiles)
-  const agents = [
-    ...registryAgents,
-    { id: "research-bot", name: "Research Bot", emoji: "🔬" },
-    { id: "web-bot", name: "Web Bot", emoji: "🌐" },
-    { id: "writer-bot", name: "Writer Bot", emoji: "✍️" },
-    { id: "mini", name: "Mini", emoji: "🔹" },
-  ];
 
   const columns = [
     { title: "Pending", status: "pending", icon: <Circle className="w-4 h-4 text-slate-500" /> },

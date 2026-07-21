@@ -53,7 +53,7 @@ The shell uses a fixed-width desktop sidebar and `min-w-0` content containment t
 
 ### Pages
 
-- `/` aggregates agent activity, health, AgentOS summaries, decisions, knowledge, and graph information.
+- `/` aggregates an **Operations summary** (what needs attention, mission status counts, system health, workflow entry points) plus agent activity, Mint health, AgentOS summaries, decisions, knowledge, and graph information.
 - `/agents` combines the AgentOS agent registry with live heartbeat data.
 - `/projects` displays the AgentOS project index and shared project ledger.
 - `/missions` provides mission creation, a client-side Kanban board, text search, agent/priority/status filters, compact result counts, queued duration, Awaiting Review labeling, mission-worker timing, and automatic state refresh.
@@ -225,6 +225,18 @@ Each arrow represents a deliberate, bounded transition:
 4. **Review → Archive:** the user explicitly archives a reviewed mission. Archival remains human-in-the-loop and persistent.
 
 The first two transitions are implemented. Idea promotion updates the same persisted record from `idea` to `todo`. To-Do promotion opens the existing Mission creation component, submits through `/api/missions`, and marks the capture as promoted only after Mission creation succeeds. Promoted captures remain preserved for lifecycle history but are omitted from the active Ideas list. Mission execution, review, debrief, and archive behavior remain unchanged. Later metadata work will be separated into small additions for project assignment, priority, tags, then search and filtering. These fields must remain optional so capture stays frictionless.
+
+### Operations dashboard (home)
+
+The home page opens with a compact **What needs attention** panel driven by `src/lib/operations-summary.ts` and `src/components/operations-summary.tsx`. It answers “what needs my attention right now?” using existing live data:
+
+- Non-archived mission counts: queued (`pending`), running (`active`), awaiting review (`completed`), failed. A successful zero is shown as `0`; a failed query is explicit unavailable state and renders as `—`.
+- Agent-state and host-health reads use the same availability contract and run independently. An unavailable agent read renders agent KPIs and the Collective as unavailable without erasing host health; an unavailable host read renders the Mint health values as unavailable without erasing valid agent counts. Each failure creates its own Needs Attention entry, while successful zero values remain `0`.
+- Attention list: awaiting-review titles, failed titles, stalled queued/active missions older than 45 minutes, unavailable mission or Ideas/To-Do queries, PostgreSQL/web/dispatcher down or unknown, unavailable cron metadata, and legacy worker enabled (or last error while disabled).
+- System pills: Mission Control web (`/api/health`), dispatcher (`systemctl --user is-active mission-dispatcher`), PostgreSQL (`SELECT 1`), legacy `mission-worker` enabled flag from Hermes cron registry. `inactive` and `failed` dispatcher states are down; transitional or unqueryable states are unknown. Reachable unhealthy web responses are down; probe failures are unknown. Both down and unknown are actionable and retain visible text labels.
+- Workflow entry points: Create mission (existing modal), Review missions → `/missions`, Ideas/To-Dos → `/ideas`, Mission archive → `/missions/archive`
+
+The Dashboard and Missions pages both obtain modal choices from `src/lib/mission-agents.ts`, which combines AgentOS registry entries with the existing Hermes sub-agent profiles and fallback behavior. It does not duplicate claim/dispatch logic, does not alter mission lifecycle, and does not add charts or Command Palette work.
 
 ### Explicit archive state
 

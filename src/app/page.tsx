@@ -1,35 +1,22 @@
-import { prisma } from "@/lib/prisma";
+/* agent: codex | model: gpt-5.5 | date: 2026-07-20 */
 import { Bot, ListTodo, Lightbulb, Activity, Monitor, Cpu, Database, Thermometer, HardDrive, Cpu as CpuIcon, Share2, BookOpen } from "lucide-react";
 import Link from "next/link";
 import { getAgents, getProjectLedger, getCronJobs, getGraphifyData, getDecisions, getKnowledgeTree, getRegistryServices } from "@/lib/agentos";
+import { getOperationsSummary } from "@/lib/operations-summary";
+import { OperationsSummaryPanel } from "@/components/operations-summary";
+import { getMissionAgentChoices } from "@/lib/mission-agents";
 
 export const dynamic = "force-dynamic";
 
-async function getStats() {
-  try {
-    const [agents, pendingMissions, pendingIdeas, hostHealth] = await Promise.all([
-      prisma.agentState.findMany({ orderBy: { updatedAt: "desc" } }),
-      prisma.mission.count({ where: { status: "pending" } }),
-      prisma.idea.count({ where: { status: "pending" } }),
-      prisma.hostHealth.findMany({ orderBy: { updatedAt: "desc" } }),
-    ]);
-    const online = agents.filter((a) => a.status === "online" || a.status === "working").length;
-    const totalCost = agents.reduce((s, a) => s + (a.totalCost || 0), 0);
-    const totalTasks = agents.reduce((s, a) => s + (a.tasksCompleted || 0), 0);
-    return { agents, online, total: agents.length, totalCost, totalTasks, pendingMissions, pendingIdeas, hostHealth };
-  } catch (e) {
-    return { agents: [], online: 0, total: 0, totalCost: 0, totalTasks: 0, pendingMissions: 0, pendingIdeas: 0, hostHealth: [] };
-  }
-}
-
 export default async function HomePage() {
-  const s = await getStats();
+  const ops = await getOperationsSummary();
 
   // AgentOS widget data (graceful if unavailable)
-  const [agentosAgents, agentosLedger, agentosCron] = await Promise.all([
+  const [agentosAgents, agentosLedger, agentosCron, missionAgents] = await Promise.all([
     getAgents().catch(() => null),
     getProjectLedger().catch(() => null),
     getCronJobs().catch(() => null),
+    getMissionAgentChoices(),
   ]);
   const agentosActive = agentosAgents
     ? Object.values(agentosAgents.agents).filter((a) => a.state === "active").length
@@ -56,7 +43,9 @@ export default async function HomePage() {
   const decisionCount = decisions.length;
 
   // Fallback to Mint-Hub if found, else first entry
-  const mint = s.hostHealth.find(h => h.hostname === "Mint-Hub") || s.hostHealth[0];
+  const hostHealth = ops.hostHealth.value ?? [];
+  const mint = hostHealth.find((host) => host.hostname === "Mint-Hub") || hostHealth[0];
+  const agentStats = ops.agentState.value;
 
   return (
     <div className="p-8 max-w-[1200px] mx-auto min-h-screen text-slate-200">
@@ -91,13 +80,13 @@ export default async function HomePage() {
               <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase">
                 <Cpu className="w-3 h-3" /> Load
               </div>
-              <div className="text-[18px] font-bold tracking-tight">{mint?.cpuUsage || "--"}%</div>
+              <div className="text-[18px] font-bold tracking-tight">{ops.hostHealth.available ? `${mint?.cpuUsage ?? "—"}%` : "—"}</div>
             </div>
             <div className="flex flex-col">
               <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase">
                 <Thermometer className="w-3 h-3 text-orange-400" /> GPU
               </div>
-              <div className="text-[18px] font-bold tracking-tight">{mint?.gpuTemp || "--"}°C</div>
+              <div className="text-[18px] font-bold tracking-tight">{ops.hostHealth.available ? `${mint?.gpuTemp ?? "—"}°C` : "—"}</div>
             </div>
           </div>
           
@@ -107,19 +96,21 @@ export default async function HomePage() {
                 <HardDrive className="w-3 h-3 text-indigo-400" /> NAS STORAGE
               </div>
               <span className={`text-[9px] font-black uppercase px-2 rounded ${mint?.nasConnected ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
-                {mint?.nasConnected ? 'CONNECTED' : 'DISCONNECTED'}
+                {!ops.hostHealth.available ? 'UNAVAILABLE' : mint?.nasConnected ? 'CONNECTED' : 'DISCONNECTED'}
               </span>
             </div>
-            <div className="text-[14px] font-bold text-white">{mint?.nasAvailable || "0"} GB <span className="text-[10px] text-slate-500 uppercase">free</span></div>
+            <div className="text-[14px] font-bold text-white">{ops.hostHealth.available ? (mint?.nasAvailable ?? "—") : "—"} <span className="text-[10px] text-slate-500 uppercase">{ops.hostHealth.available ? "GB free" : "Unavailable"}</span></div>
           </div>
         </div>
       </div>
 
+      <OperationsSummaryPanel summary={ops} agents={missionAgents} />
+
       <div className="grid grid-cols-4 gap-5 mb-10">
-        <Kpi icon={<Bot className="w-4 h-4 text-cyan-400" />} label="Agents online" value={`${s.online} / ${s.total}`} />
-        <Kpi icon={<Activity className="w-4 h-4 text-indigo-400" />} label="Tasks completed" value={s.totalTasks.toLocaleString()} />
-        <Kpi icon={<ListTodo className="w-4 h-4 text-rose-400" />} label="Pending missions" value={String(s.pendingMissions)} />
-        <Kpi icon={<Lightbulb className="w-4 h-4 text-amber-400" />} label="Ideas to review" value={String(s.pendingIdeas)} />
+        <Kpi icon={<Bot className="w-4 h-4 text-cyan-400" />} label="Agents online" value={agentStats ? `${agentStats.online} / ${agentStats.total}` : "—"} />
+        <Kpi icon={<Activity className="w-4 h-4 text-indigo-400" />} label="Tasks completed" value={agentStats ? agentStats.totalTasks.toLocaleString() : "—"} />
+        <Kpi icon={<ListTodo className="w-4 h-4 text-rose-400" />} label="Pending missions" value={ops.missions.available ? String(ops.missions.queued) : "—"} />
+        <Kpi icon={<Lightbulb className="w-4 h-4 text-amber-400" />} label="Ideas to review" value={ops.pendingIdeas.available ? String(ops.pendingIdeas.value) : "—"} />
       </div>
 
       <div
@@ -304,7 +295,7 @@ export default async function HomePage() {
       </div>
       
       <div className="grid grid-cols-2 gap-4">
-        {s.agents.slice(0, 6).map((a) => (
+        {agentStats ? agentStats.agents.slice(0, 6).map((a) => (
           <div
             key={a.id}
             className="p-6 rounded-2xl flex items-center gap-5 transition-all hover:bg-white/[0.04] border relative overflow-hidden text-white"
@@ -325,7 +316,11 @@ export default async function HomePage() {
               <div className="text-[15px] font-black text-cyan-400 font-mono">${(a.totalCost || 0).toFixed(2)}</div>
             </div>
           </div>
-        ))}
+        )) : (
+          <div className="col-span-2 rounded-xl border border-white/5 bg-black/20 p-5 text-sm font-semibold text-slate-400">
+            Agent state unavailable.
+          </div>
+        )}
       </div>
     </div>
   );

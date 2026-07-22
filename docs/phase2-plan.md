@@ -113,6 +113,14 @@ Phase 2.2 prioritizes daily operational value over appearance-only redesign. Wor
    - [x] Render newly captured items immediately in the existing Ideas view and verify restart persistence.
    - [x] Promote an Idea to a To-Do as one explicit persisted lifecycle transition on the existing record.
    - [x] Promote a To-Do into a Mission through the existing Mission creation and Hermes dispatch workflow.
+   - [x] Edit active Ideas and To-Dos in place.
+     - Inline Edit, Save, and Cancel update only displayed text plus automatic modification timestamp.
+     - Preserve ID, type, lifecycle/promotion state, creation timestamp, and all unrelated fields.
+     - Reject blank text, retain failed-save drafts for retry, and disallow promoted/archived/non-active record edits.
+     - Require optimistic concurrency with the displayed `updatedAt`: update only matching pending rows, return HTTP 409 for stale versions, retain the stale draft, and allow the latest saved value to be loaded for comparison without discarding that draft.
+     - Targeted isolated coverage includes Idea and To-Do edits, invariant preservation, Cancel, blank rejection, the real route-backed stale conflict and draft/error state, a fresh-version retry, and promoted-record rejection.
+     - Verified 2026-07-21 23:28:02 MDT after mission-control stop → additive schema sync → build → restart: Ideas page/API/health HTTP 200, active records expose modification timestamps, no test markers, both services enabled/active.
+     - Optimistic-concurrency correction verified 2026-07-21 23:45:27 MDT after mission-control stop → corrected-source build → restart: Ideas page/API HTTP 200; controlled first save HTTP 200; stale second save HTTP 409; first value remained persisted; marker cleanup complete; both services enabled/active.
    - [ ] Add project assignment in a later bounded metadata component.
    - [ ] Add priority and tags in a later bounded metadata component.
    - [ ] Add Ideas/To-Dos search and filtering after the metadata and lifecycle transitions are stable.

@@ -76,7 +76,7 @@ Most data-heavy pages are React Server Components. Client Components are used wh
 - `/api/missions/[id]`: updates mission status, result, debrief path, and archive state.
 - `/api/missions/archive`: returns completed missions whose `isArchived` flag is true.
 - `/api/ideas`: lists and creates Ideas and To-Dos through the existing capture store; POST validates the explicit `idea` or `todo` type.
-- `/api/ideas/[id]`: applies guarded promotion transitions to the existing capture record; it changes an Idea to a To-Do or marks a To-Do promoted after Mission creation succeeds.
+- `/api/ideas/[id]`: edits active capture text in place and applies guarded promotion transitions to the existing capture record; it changes an Idea to a To-Do or marks a To-Do promoted after Mission creation succeeds.
 - `/api/content/index`: supports generated-content indexing.
 - `/api/registry`: returns AgentOS device and service registry data.
 - `/api/files`: serves guarded Markdown and HTML files for raw viewing.
@@ -90,7 +90,7 @@ Prisma defines these PostgreSQL models:
 - `AgentState`: current agent status, task, activity, cost, and heartbeat timestamp.
 - `Mission`: assigned work, priority, compatibility lifecycle status, result, debrief path, completion time, archive state, and explicit execution provider/mode.
 - `MissionExecution`: durable execution attempts with queued, claimed, running, completed, or failed state; claim/start/activity/completion timestamps; execution and worker identifiers; attempt number; and error details.
-- `Idea`: manually or automatically captured Ideas and To-Dos, distinguished by the required `CaptureType` enum (`idea` or `todo`), plus review state. Existing records were safely backfilled as `idea` through the field default.
+- `Idea`: manually or automatically captured Ideas and To-Dos, distinguished by the required `CaptureType` enum (`idea` or `todo`), plus review state, immutable creation timestamp, and automatic modification timestamp. Existing records were safely backfilled as `idea` through the field default.
 - `HostHealth`: CPU, memory, disk, GPU temperature, and NAS status by hostname.
 - `GeneratedFile`: indexed metadata and optional content for generated files.
 - `DataStore`: generic JSON-backed extension storage.
@@ -253,6 +253,16 @@ Each arrow represents a deliberate, bounded transition:
 4. **Review → Archive:** the user explicitly archives a reviewed mission. Archival remains human-in-the-loop and persistent.
 
 The first two transitions are implemented. Idea promotion updates the same persisted record from `idea` to `todo`. To-Do promotion opens the existing Mission creation component, submits through `/api/missions`, and marks the capture as promoted only after Mission creation succeeds. Promoted captures remain preserved for lifecycle history but are omitted from the active Ideas list. Mission execution, review, debrief, and archive behavior remain unchanged. Later metadata work will be separated into small additions for project assignment, priority, tags, then search and filtering. These fields must remain optional so capture stays frictionless.
+
+### Active capture editing
+
+Active Ideas and To-Dos (`status = pending`) have an inline Edit action with Save and Cancel. Saving trims and validates the displayed title, updates that existing row in place, and advances only its automatic `updatedAt` modification timestamp in addition to the edited title. The client sends the version it displayed as `expectedUpdatedAt`; the API changes the row only when ID, pending status, and that timestamp still match. A stale save returns HTTP 409 without overwriting the newer value. The inline editor preserves the stale draft and error, and **Load latest for comparison** refreshes the saved card value without replacing that draft so the user can compare and retry safely. ID, type, lifecycle state, description, source, category, promotion history, and immutable `timestamp` creation time remain unchanged. Blank text is rejected. Other client-supplied lifecycle or metadata fields are not accepted.
+
+Promoted, archived, or otherwise non-pending captures cannot be edited through the API and do not appear with an Edit action in the active list. This component does not add deletion, metadata, search, mission editing, or any other capture workflow.
+
+Production verification completed 2026-07-21 23:28:02 MDT after mission-control stop → additive schema synchronization → build → restart. `/ideas`, `/api/ideas`, and `/api/health` returned HTTP 200 with PostgreSQL connected; all 14 active captures exposed `updatedAt`; the production schema contained the additive column; no Idea-edit test markers remained; both user services were enabled and active.
+
+Optimistic-concurrency correction verification completed 2026-07-21 23:45:27 MDT after mission-control stop → build from the corrected source → restart. `/ideas` and `/api/ideas` returned HTTP 200. A disposable live Idea accepted the first current-version edit with HTTP 200, rejected a second edit using the original timestamp with HTTP 409, and retained the first saved value; the exact marker row was removed afterward. No Idea-edit or live-conflict markers remained, and both user services were enabled and active.
 
 ### Operations dashboard (home)
 

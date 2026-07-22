@@ -105,6 +105,7 @@ model Idea {
   source      String?
   status      String?     @default("pending")
   timestamp   DateTime    @default(now())
+  updatedAt   DateTime    @default(now()) @updatedAt
 
   @@index([category])
   @@index([status])

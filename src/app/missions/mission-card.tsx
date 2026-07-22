@@ -3,6 +3,7 @@
 
 import { useState } from "react";
 import { Archive, AlertCircle } from "lucide-react";
+import { missionQueueTimingLabel } from "@/lib/mission-dispatch-ux";
 
 interface MissionCardProps {
   m: any;
@@ -25,7 +26,8 @@ export function MissionCard({ m, colIcon, onArchive, now, stalledWarningMs }: Mi
   const [error, setError] = useState<string | null>(null);
   const age = now - new Date(m.createdAt).getTime();
   const isTimedState = m.status === "pending" || m.status === "active";
-  const isStalled = isTimedState && age >= stalledWarningMs;
+  const isAutomatic = m.executionMode === "AUTO";
+  const isStalled = isTimedState && (m.status !== "pending" || isAutomatic) && age >= stalledWarningMs;
   const latestExecution = m.executions?.[0];
 
   const handleArchive = async (e: React.MouseEvent) => {
@@ -74,7 +76,7 @@ export function MissionCard({ m, colIcon, onArchive, now, stalledWarningMs }: Mi
       {m.status === "pending" && (
         <div className={`mb-3 flex items-center gap-1 text-[10px] font-bold ${isStalled ? "text-amber-400" : "text-slate-500"}`}>
           {isStalled && <AlertCircle className="h-3 w-3" aria-hidden="true" />}
-          Queued for {formatDuration(age)}{isStalled ? " · exceeds 45m warning threshold" : ""}
+          {missionQueueTimingLabel(isAutomatic ? "AUTO" : "MANUAL", formatDuration(age), isStalled)}
         </div>
       )}
       {m.status === "active" && isStalled && (

@@ -1,4 +1,4 @@
-/* agent: codex | model: gpt-5 | date: 2026-07-14 */
+/* agent: codex | model: gpt-5 | date: 2026-07-21 */
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -6,6 +6,7 @@ import { Activity, RefreshCw } from "lucide-react";
 import { CreateMissionButton } from "../../components/create-mission-button";
 import { MissionCard } from "./mission-card";
 import { MissionBoardFilters } from "./mission-board-filters";
+import { dispatcherStatusLabel, legacyWorkerNextRunLabel, type DispatcherHealth } from "@/lib/mission-dispatch-ux";
 
 interface Mission {
   id: string;
@@ -18,6 +19,7 @@ interface Mission {
   debriefPath: string | null;
   createdAt: Date | string;
   completedAt: Date | string | null;
+  executionMode: "AUTO" | "MANUAL";
 }
 
 interface Column {
@@ -40,6 +42,10 @@ interface WorkerState {
   lastError: string | null;
 }
 
+interface DispatcherState {
+  health: DispatcherHealth;
+}
+
 const POLL_INTERVAL_MS = 20_000;
 export const STALLED_WARNING_MS = 45 * 60 * 1000;
 
@@ -60,6 +66,7 @@ export function KanbanClient({ missions, agents, columns }: KanbanClientProps) {
   const [priority, setPriority] = useState("all");
   const [status, setStatus] = useState("all");
   const [worker, setWorker] = useState<WorkerState | null>(null);
+  const [dispatcher, setDispatcher] = useState<DispatcherState | null>(null);
   const [refreshedAt, setRefreshedAt] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -71,6 +78,7 @@ export function KanbanClient({ missions, agents, columns }: KanbanClientProps) {
       if (!response.ok) throw new Error(data?.error || "Mission refresh failed");
       setLocalMissions(data.missions || []);
       setWorker(data.worker || null);
+      setDispatcher(data.dispatcher || null);
       setRefreshedAt(data.refreshedAt || new Date().toISOString());
       setRefreshError(null);
       setNow(Date.now());
@@ -169,15 +177,20 @@ export function KanbanClient({ missions, agents, columns }: KanbanClientProps) {
         onClear={clearFilters}
       />
 
-      <section className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-white/5 bg-white/[0.02] px-4 py-3 text-[11px] text-slate-400" aria-label="Mission worker freshness" aria-live="polite">
+      <section className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-white/5 bg-white/[0.02] px-4 py-3 text-[11px] text-slate-400" aria-label="Mission processor status" aria-live="polite">
         <span className="inline-flex items-center gap-2 font-bold text-slate-300">
           <Activity className="h-4 w-4 text-cyan-400" aria-hidden="true" />
-          Mission worker
+          Deterministic dispatcher
         </span>
-        <span>Last run: {formatRelativeTime(worker?.lastRunAt ?? null, now)}</span>
-        <span>Next run: {formatRelativeTime(worker?.nextRunAt ?? null, now)}</span>
-        <span className={worker?.lastStatus === "error" ? "text-rose-400" : "text-emerald-400"}>
-          {worker ? `${worker.enabled ? "Enabled" : "Disabled"} · ${worker.lastStatus || "unknown"}` : "Worker status unavailable"}
+        <span className={dispatcher?.health === "up" ? "text-emerald-400" : dispatcher?.health === "down" ? "text-rose-400" : "text-slate-400"}>
+          {dispatcherStatusLabel(dispatcher?.health ?? "unknown")}
+        </span>
+        <span className="text-slate-500">Legacy worker · {worker?.enabled ? "Enabled" : worker ? "Disabled intentionally" : "Status unavailable"}</span>
+        <span>Legacy last run: {formatRelativeTime(worker?.lastRunAt ?? null, now)}</span>
+        <span>
+          Legacy next run: {worker
+            ? legacyWorkerNextRunLabel(worker.enabled, worker.nextRunAt, (value) => formatRelativeTime(value, now))
+            : "—"}
         </span>
         <span className="ml-auto inline-flex items-center gap-1 text-slate-500">
           <RefreshCw className="h-3 w-3" aria-hidden="true" />

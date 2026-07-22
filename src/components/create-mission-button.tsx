@@ -1,9 +1,10 @@
-/* agent: codex | model: gpt-5 | date: 2026-07-14 */
+/* agent: codex | model: gpt-5 | date: 2026-07-21 */
 "use client";
 
 import { useState } from "react";
 import { Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { resolveMissionExecutionMode, supportsAutomaticDispatch, type MissionExecutionMode } from "@/lib/mission-dispatch-ux";
 
 interface MissionAgent {
   id: string;
@@ -36,6 +37,11 @@ export function CreateMissionButton({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const initialAgentId = agents[0]?.id ?? "";
+  const [selectedAgentId, setSelectedAgentId] = useState(initialAgentId);
+  const [executionMode, setExecutionMode] = useState<MissionExecutionMode>(() =>
+    resolveMissionExecutionMode(initialAgentId),
+  );
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -49,6 +55,7 @@ export function CreateMissionButton({
       description: formData.get("description"),
       agentId: formData.get("agentId"),
       priority: formData.get("priority"),
+      executionMode: formData.get("executionMode"),
     };
 
     try {
@@ -79,6 +86,8 @@ export function CreateMissionButton({
       <button 
         onClick={() => {
           setError(null);
+          setSelectedAgentId(initialAgentId);
+          setExecutionMode(resolveMissionExecutionMode(initialAgentId));
           setOpen(true);
         }}
         disabled={agents.length === 0}
@@ -111,7 +120,16 @@ export function CreateMissionButton({
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Assign Agent</label>
-                  <select name="agentId" className="bg-slate-800 border border-white/5 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-500 transition-colors">
+                  <select
+                    name="agentId"
+                    value={selectedAgentId}
+                    onChange={(event) => {
+                      const nextAgentId = event.target.value;
+                      setSelectedAgentId(nextAgentId);
+                      setExecutionMode(resolveMissionExecutionMode(nextAgentId));
+                    }}
+                    className="bg-slate-800 border border-white/5 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-500 transition-colors"
+                  >
                     {agents.map(a => (
                       <option key={a.id} value={a.id}>{a.emoji} {a.name}</option>
                     ))}
@@ -127,6 +145,26 @@ export function CreateMissionButton({
                 </div>
               </div>
 
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Execution Mode</label>
+                <select
+                  name="executionMode"
+                  value={executionMode}
+                  onChange={(event) => setExecutionMode(event.target.value as MissionExecutionMode)}
+                  className="bg-slate-800 border border-white/5 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-500 transition-colors"
+                >
+                  {supportsAutomaticDispatch(selectedAgentId) && (
+                    <option value="AUTO">Automatic · dispatch with Hermes</option>
+                  )}
+                  <option value="MANUAL">Manual · wait for operator launch</option>
+                </select>
+                <p className="text-[10px] leading-relaxed text-slate-500">
+                  {supportsAutomaticDispatch(selectedAgentId)
+                    ? "Hermes missions dispatch automatically by default. Choose Manual to hold the mission for operator launch."
+                    : "No automatic dispatcher is configured for this agent. This mission will wait for manual launch."}
+                </p>
+              </div>
+
               {error && <div role="alert" className="text-[12px] font-medium text-rose-400">{error}</div>}
 
               <button 
@@ -134,7 +172,7 @@ export function CreateMissionButton({
                 disabled={loading}
                 className="mt-4 w-full py-3 bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-black font-black uppercase rounded-2xl transition-all"
               >
-                {loading ? "Deploying..." : "Launch Mission"}
+                {loading ? "Creating..." : executionMode === "AUTO" ? "Create & Queue Mission" : "Create Manual Mission"}
               </button>
             </form>
           </div>

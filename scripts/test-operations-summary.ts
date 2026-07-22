@@ -132,11 +132,37 @@ async function main() {
   assert.equal(healthy.attention.length, 0);
   console.log("PASS successful zero remains authoritative data");
 
+  const now = Date.UTC(2026, 6, 20);
+  const missionSemantics = await getOperationsSummary(dependencies({
+    now: () => now,
+    readMissions: async () => [
+      { id: "old-auto", title: "Old automatic", status: "pending", executionMode: "AUTO", createdAt: new Date(now - 46 * 60_000), executions: [] },
+      { id: "old-manual", title: "Old manual", status: "pending", executionMode: "MANUAL", createdAt: new Date(now - 90 * 60_000), executions: [] },
+      { id: "recent-auto", title: "Recent automatic", status: "pending", executionMode: "AUTO", createdAt: new Date(now - 44 * 60_000), executions: [] },
+      { id: "old-active", title: "Old active", status: "active", executionMode: "MANUAL", createdAt: new Date(now - 46 * 60_000), executions: [] },
+      { id: "completed", title: "Completed work", status: "completed", executionMode: "AUTO", createdAt: new Date(now), executions: [] },
+      { id: "failed", title: "Failed work", status: "failed", executionMode: "AUTO", createdAt: new Date(now), executions: [{ error: "failure", recoveredAt: null }] },
+    ],
+  }));
+  assert.equal(missionSemantics.missions.queued, 3);
+  assert.equal(missionSemantics.missions.running, 1);
+  assert.equal(missionSemantics.missions.awaitingReview, 1);
+  assert.equal(missionSemantics.missions.failed, 1);
+  assert.equal(missionSemantics.missions.stalled, 2);
+  assert(missionSemantics.attention.some((item) => item.id === "stalled-queued-old-auto"));
+  assert(!missionSemantics.attention.some((item) => item.id === "stalled-queued-old-manual"));
+  assert(!missionSemantics.attention.some((item) => item.id === "stalled-queued-recent-auto"));
+  assert(missionSemantics.attention.some((item) => item.id === "stalled-active-old-active"));
+  assert(missionSemantics.attention.some((item) => item.id === "review-completed"));
+  assert(missionSemantics.attention.some((item) => item.id === "failed-failed"));
+  console.log("PASS mission stalled semantics: old AUTO queued, old MANUAL skipped, recent AUTO skipped, active/complete/failed unchanged");
+
   const recoveredStale = await getOperationsSummary(dependencies({
     readMissions: async () => [{
       id: "stale-mission",
       title: "Recovered work",
       status: "failed",
+      executionMode: "AUTO",
       createdAt: new Date(0),
       executions: [{ error: "Stale execution recovered", recoveredAt: new Date() }],
     }],

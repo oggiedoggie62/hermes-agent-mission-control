@@ -1,6 +1,7 @@
-/* agent: codex | model: gpt-5 | date: 2026-07-14 */
+/* agent: codex | model: gpt-5 | date: 2026-07-21 */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { resolveMissionExecutionMode } from "@/lib/mission-dispatch-ux";
 
 export async function POST(req: NextRequest) {
   const secret = process.env.INTERNAL_API_SECRET;
@@ -12,10 +13,20 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { title, description, agentId, priority } = body;
+    const { title, description, agentId, priority, executionMode: requestedExecutionMode } = body;
 
     if (!title || !agentId) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+    }
+
+    let executionMode;
+    try {
+      executionMode = resolveMissionExecutionMode(agentId, requestedExecutionMode);
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Invalid execution mode" },
+        { status: 400 },
+      );
     }
 
     const mission = await prisma.$transaction(async (tx) => {
@@ -27,7 +38,7 @@ export async function POST(req: NextRequest) {
           priority: priority || "medium",
           status: "pending",
           executionProvider: "HERMES",
-          executionMode: "MANUAL",
+          executionMode,
         },
       });
 
@@ -36,7 +47,7 @@ export async function POST(req: NextRequest) {
           missionId: created.id,
           status: "queued",
           provider: "HERMES",
-          mode: "MANUAL",
+          mode: executionMode,
           attempt: 1,
         },
       });

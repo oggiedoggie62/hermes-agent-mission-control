@@ -72,7 +72,7 @@ Most data-heavy pages are React Server Components. Client Components are used wh
 - `/api/health`: checks PostgreSQL connectivity.
 - `/api/host/health`: receives and returns machine health reports.
 - `/api/missions`: creates missions and exposes agent choices.
-- `/api/missions/state`: returns current non-archived missions, their latest durable execution attempt, and read-only `mission-worker` last-run, next-run, enabled, and result metadata from the Hermes cron registry.
+- `/api/missions/state`: returns current non-archived missions, their latest durable execution attempt, deterministic dispatcher service health, and read-only legacy `mission-worker` last-run, next-run, enabled, and result metadata from the Hermes cron registry.
 - `/api/missions/[id]`: updates mission status, result, debrief path, and archive state.
 - `/api/missions/archive`: returns completed missions whose `isArchived` flag is true.
 - `/api/ideas`: lists and creates Ideas and To-Dos through the existing capture store; POST validates the explicit `idea` or `todo` type.
@@ -140,7 +140,23 @@ Worker visibility is read directly from Hermes' `mission-worker` cron entry and 
 
 `MissionExecution` is the durable execution-attempt record. It separates execution state from the legacy `Mission.status` compatibility field and supports `queued`, `claimed`, `running`, `completed`, and `failed`. Each attempt can record `claimedAt`, `startedAt`, `heartbeatAt`, `completedAt`, `executionId`, `workerId`, `attempt`, and `error`. A unique `(missionId, attempt)` constraint prevents duplicate attempt numbers, and a unique execution identifier supports reliable callbacks.
 
-Missions and attempts carry explicit execution policy metadata: provider is currently `HERMES`, while mode is `MANUAL` or `AUTO`. Existing missions and missions created through the current UI migrate/default to `MANUAL`. The future dispatcher claim operation selects only matching `AUTO` missions and executions, so enabling that dispatcher cannot silently claim migrated work.
+Missions and attempts carry explicit execution policy metadata: provider is currently `HERMES`, while mode is `MANUAL` or `AUTO`. Migrated missions remain `MANUAL`. The normal New Mission dialog defaults assignments to the supported `hermes` agent to `AUTO`, provides an explicit Manual option, and forces agents without a configured automatic dispatcher to `MANUAL`. The dispatcher claim operation selects only matching HERMES/AUTO missions and executions, so unsupported or migrated work cannot be claimed accidentally.
+
+### Mission dispatch UX
+
+The New Mission dialog has an explicit Execution Mode selector. Assigning Hermes selects **Automatic · dispatch with Hermes** by default; selecting **Manual · wait for operator launch** persists both the Mission and its first MissionExecution as MANUAL. Any agent without a supported dispatcher is restricted to Manual in the UI, and the API independently enforces the same policy even if a caller submits `AUTO`.
+
+Pending Mission cards use execution policy rather than compatibility status alone. AUTO cards say **Queued for automatic dispatch** and may show the 45-minute warning. MANUAL cards say **Waiting for manual launch** and are not presented as stalled automatic work.
+
+The Operations Dashboard uses the same execution-mode truth for pending attention: only pending AUTO missions can produce `Queued mission exceeds 45m`. Pending MANUAL missions remain counted as pending work but never appear as stalled automatic-queue failures. Active mission age warnings and completed, failed, and unavailable semantics are unchanged.
+
+This consistency correction was verified in production at 2026-07-21 22:58:09 MDT after stopping `mission-control`, building from current source, and restarting it. `/`, `/missions`, and `/api/missions/state` returned HTTP 200; both user services remained enabled and active; the state endpoint reported dispatcher health `up` and legacy worker disabled. The live dashboard did not contain `Queued mission exceeds 45m: Audit and Repair Hermes Scheduled Jobs`, while that mission remained pending MANUAL.
+
+The Missions status banner identifies the systemd-owned **Deterministic dispatcher** as the active processor using live service health from `/api/missions/state`. Cron metadata is labeled **Legacy worker**. When that preserved cron entry is disabled, the banner says **Disabled intentionally** and renders its next run as **Disabled**, never as a stale scheduled timestamp.
+
+The existing `Audit and Repair Hermes Scheduled Jobs` mission was intentionally not mutated during this component. It remains pending HERMES/MANUAL. Because Mission Control has no reviewed in-place execution-policy conversion workflow, the safest supported path is to recreate it through New Mission with Hermes and Automatic selected, verify the new mission ID/mode, and then resolve the old manual record separately rather than editing its Mission and MissionExecution rows directly.
+
+Production verification completed 2026-07-21 22:46:57 MDT after the required two-service stop → build → start sequence. `/api/health`, `/api/missions/state`, and `/missions` returned HTTP 200; PostgreSQL was connected; the mission-state payload reported dispatcher health `up` and legacy worker `enabled=false`; both systemd services were enabled and active. The named existing mission retained ID `6d7ec7ee-ce3a-4809-b54e-69c293ed08ac`, status `pending`, and mode `MANUAL`.
 
 `claimNextMission` uses one PostgreSQL common-table-expression statement with `FOR UPDATE ... SKIP LOCKED`. It selects one eligible Mission, changes exactly one queued attempt to claimed with worker/execution identity and claim/activity timestamps, and updates the compatibility Mission status to active atomically. A 12-caller concurrency test verifies that exactly one caller receives a given mission. Supporting service functions mark an execution running, record activity, or finish it as completed/failed; the deterministic dispatcher now uses the claim, running, and finish operations.
 

@@ -1,13 +1,14 @@
-/* agent: codex | model: gpt-5 | date: 2026-07-14 */
+/* agent: codex | model: gpt-5 | date: 2026-07-21 */
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCronJobs } from "@/lib/agentos";
+import { probeDispatcherHealth } from "@/lib/operations-summary";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const [missions, cronJobs] = await Promise.all([
+    const [missions, cronJobs, dispatcherHealth] = await Promise.all([
       prisma.mission.findMany({
         where: { isArchived: false },
         orderBy: { createdAt: "desc" },
@@ -19,6 +20,7 @@ export async function GET() {
         },
       }),
       getCronJobs(),
+      probeDispatcherHealth(),
     ]);
 
     const worker = cronJobs?.find((job) => job.name === "mission-worker");
@@ -35,6 +37,7 @@ export async function GET() {
               lastError: worker.last_error,
             }
           : null,
+        dispatcher: { health: dispatcherHealth },
         refreshedAt: new Date().toISOString(),
       },
       { headers: { "Cache-Control": "no-store" } },

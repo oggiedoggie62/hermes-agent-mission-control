@@ -27,6 +27,7 @@ interface MissionSummaryRow {
   title: string;
   status: string;
   createdAt: Date;
+  executionMode: "AUTO" | "MANUAL";
   executions: Array<{
     error: string | null;
     recoveredAt: Date | null;
@@ -148,6 +149,7 @@ const defaultDependencies: OperationsSummaryDependencies = {
         title: true,
         status: true,
         createdAt: true,
+        executionMode: true,
         executions: {
           orderBy: { attempt: "desc" },
           take: 1,
@@ -241,7 +243,7 @@ export async function getOperationsSummary(
       const age = dependencies.now() - new Date(mission.createdAt).getTime();
       if (mission.status === "pending") {
         queued += 1;
-        if (age >= STALLED_WARNING_MS) {
+        if (mission.executionMode === "AUTO" && age >= STALLED_WARNING_MS) {
           stalled += 1;
           attention.push({ id: `stalled-queued-${mission.id}`, severity: "warning", label: `Queued mission exceeds 45m: ${mission.title}`, href: "/missions" });
         }

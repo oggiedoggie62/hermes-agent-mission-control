@@ -1,10 +1,10 @@
-/* agent: codex | model: gpt-5 | date: 2026-07-15 */
+/* agent: codex | model: gpt-5 | date: 2026-07-21 */
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { claimNextMission, finishExecution, markExecutionRunning } from "../src/lib/mission-execution";
+import { claimNextMission, finishExecution, markExecutionRunning, recordExecutionActivity, recoverStaleExecutions } from "../src/lib/mission-execution";
 import { prisma } from "../src/lib/prisma";
 
 const pollSeconds = Number(process.env.MISSION_DISPATCH_POLL_SECONDS ?? "45");
@@ -15,6 +15,16 @@ const concurrencyLimit = Number(process.env.MISSION_DISPATCH_CONCURRENCY ?? "1")
 if (concurrencyLimit !== 1) {
   throw new Error("MISSION_DISPATCH_CONCURRENCY must be 1 in this rollout phase");
 }
+const staleThresholdSeconds = Number(process.env.MISSION_EXECUTION_STALE_SECONDS ?? "1800");
+if (!Number.isInteger(staleThresholdSeconds) || staleThresholdSeconds < 60) {
+  throw new Error("MISSION_EXECUTION_STALE_SECONDS must be an integer of at least 60");
+}
+const executionTimeoutSeconds = Number(process.env.MISSION_EXECUTION_TIMEOUT_SECONDS ?? "3600");
+const minimumExecutionTimeoutSeconds = process.env.MISSION_DISPATCH_TEST_ALLOW_SHORT_TIMEOUT === "1" ? 1 : 60;
+if (!Number.isInteger(executionTimeoutSeconds) || executionTimeoutSeconds < minimumExecutionTimeoutSeconds) {
+  throw new Error("MISSION_EXECUTION_TIMEOUT_SECONDS must be an integer of at least 60");
+}
+const heartbeatSeconds = Math.max(10, Math.min(60, Math.floor(staleThresholdSeconds / 3)));
 
 const dispatcherId = process.env.MISSION_DISPATCHER_ID?.trim() || `mission-dispatcher:${hostname()}:${process.pid}`;
 const hermesBin = process.env.HERMES_BIN?.trim() || "/home/oggie/.local/bin/hermes";
@@ -47,7 +57,7 @@ async function readValidDebrief(absolutePath: string) {
   }
 }
 
-function runHermes(prompt: string): Promise<{ code: number | null; stdout: string; stderr: string }> {
+function runHermes(prompt: string, executionId: string): Promise<{ code: number | null; stdout: string; stderr: string; timedOut: boolean }> {
   return new Promise((resolve, reject) => {
     const child = spawn(hermesBin, ["--oneshot", prompt], {
       cwd: "/home/oggie/mission-control",
@@ -56,10 +66,28 @@ function runHermes(prompt: string): Promise<{ code: number | null; stdout: strin
     });
     let stdout = "";
     let stderr = "";
+    let timedOut = false;
+    const heartbeat = setInterval(() => {
+      void recordExecutionActivity(executionId).catch((error) =>
+        console.error(`[${new Date().toISOString()}] heartbeat failed execution=${executionId}:`, error),
+      );
+    }, heartbeatSeconds * 1000);
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+      setTimeout(() => child.kill("SIGKILL"), 5_000).unref();
+    }, executionTimeoutSeconds * 1000);
+    const cleanup = () => {
+      clearInterval(heartbeat);
+      clearTimeout(timeout);
+    };
     child.stdout.on("data", (chunk) => { stdout = (stdout + chunk).slice(-32_000); });
     child.stderr.on("data", (chunk) => { stderr = (stderr + chunk).slice(-32_000); });
-    child.once("error", reject);
-    child.once("close", (code) => resolve({ code, stdout: stdout.trim(), stderr: stderr.trim() }));
+    child.once("error", (error) => { cleanup(); reject(error); });
+    child.once("close", (code) => {
+      cleanup();
+      resolve({ code, stdout: stdout.trim(), stderr: stderr.trim(), timedOut });
+    });
   });
 }
 
@@ -99,7 +127,13 @@ async function dispatchOnce() {
 
     console.log(`[${new Date().toISOString()}] claimed mission=${mission.id} execution=${executionId} dispatcher=${dispatcherId}`);
     await markExecutionRunning(executionId);
-    const result = await runHermes(prompt);
+    const result = await runHermes(prompt, executionId);
+    if (result.timedOut) {
+      const error = `Execution timeout exceeded ${executionTimeoutSeconds} seconds`;
+      await finishExecution(executionId, { status: "failed", error });
+      console.error(`[${new Date().toISOString()}] failed mission=${missionId} execution=${executionId}: ${error}`);
+      return;
+    }
     if (result.code === 0) {
       const debrief = await readValidDebrief(absoluteDebriefPath);
       if (!result.stdout) {
@@ -134,8 +168,19 @@ async function dispatchOnce() {
 }
 
 async function main() {
-  console.log(`dispatcher=${dispatcherId} poll=${pollSeconds}s concurrency=${concurrencyLimit} legacy_worker=preserved`);
+  console.log(`dispatcher=${dispatcherId} poll=${pollSeconds}s concurrency=${concurrencyLimit} stale=${staleThresholdSeconds}s timeout=${executionTimeoutSeconds}s legacy_worker=preserved`);
   while (!stopping) {
+    const recovered = await recoverStaleExecutions({
+      staleBefore: new Date(Date.now() - staleThresholdSeconds * 1000),
+      recoveredBy: dispatcherId,
+      staleThresholdSeconds,
+    }).catch((error) => {
+      console.error(`[${new Date().toISOString()}] stale recovery failed:`, error);
+      return [];
+    });
+    for (const execution of recovered) {
+      console.error(`[${execution.recoveredAt.toISOString()}] recovered stale mission=${execution.missionId} execution=${execution.executionId ?? "unassigned"} previous=${execution.previousStatus}`);
+    }
     await dispatchOnce().catch((error) => console.error(`[${new Date().toISOString()}] poll failed:`, error));
     if (!stopping) {
       await new Promise<void>((resolve) => {

@@ -82,7 +82,14 @@ Phase 2.2 prioritizes daily operational value over appearance-only redesign. Wor
      - Restart bounds: `StartLimitIntervalSec=300`, `StartLimitBurst=5`, `Restart=on-failure`, `RestartSec=5`.
      - Re-verified 2026-07-20 20:24 MDT after Codex review fixes: health/state/missions HTTP 200, full dispatcher poll interval, user-systemd ancestry, `.env` mode 0600, installed units match repo, start-limit behavior proven then restored.
    - [ ] Retire the legacy global temporary-file handoff only in a separately authorized cutover.
-   - [ ] Add retries and stale-execution recovery in later bounded reliability components.
+   - [x] Add bounded stale-execution recovery and execution timeout.
+     - Default inactivity threshold: `MISSION_EXECUTION_STALE_SECONDS=1800`; default hard Hermes runtime: `MISSION_EXECUTION_TIMEOUT_SECONDS=3600`; both require at least 60 seconds.
+     - Recover stale claimed/running attempts atomically with advisory locking plus `FOR UPDATE ... SKIP LOCKED`; require and lock the related active Mission before either update, persist recovery time and diagnostics, fail both records consistently, and release global capacity without retrying. Incompatible non-active Missions are skipped without execution mutation, false recovery results, or capacity changes.
+     - Heartbeat healthy Hermes executions, condition terminal writes on an active attempt, surface recovery errors/timestamps through mission state, Mission cards, and Dashboard attention.
+     - No-model-cost harness covers recent claimed/running preservation, active-Mission stale claimed/running recovery, completed/claimed and failed/running incompatibility preservation, exact recovery results, skipped-row capacity preservation, two-process uniqueness, compatible capacity release, subsequent AUTO completion, hard timeout, and two consecutive clean stability runs.
+     - Production re-verified 2026-07-21 21:19 MDT: additive schema sync and stop → build → start succeeded; health/state/missions HTTP 200; both systemd services enabled/active; concurrency remained 1; legacy worker remained preserved and disabled.
+     - Final-source consistency fix re-verified 2026-07-21 22:12:16 MDT after confirming the active-Mission join and `FOR UPDATE OF e, m SKIP LOCKED`: fresh two-service stop → build → start passed; health/state/missions HTTP 200; PostgreSQL connected; both services enabled/active; dispatcher survived a full 45-second poll interval with the same MainPID and zero restarts; legacy worker disabled; active AUTO executions, production test markers, and controlled test processes all zero.
+   - [ ] Add automatic retries only in a separately bounded reliability component.
    - [ ] Increase controlled concurrency only after single-execution dispatch is stable.
 2. **Mission review and retrieval**
    - [x] Complete archive search and filtering from Phase 2.1.1 at the start of Phase 2.2 implementation.

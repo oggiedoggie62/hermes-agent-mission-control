@@ -76,6 +76,7 @@ model MissionExecution {
   startedAt   DateTime?
   heartbeatAt DateTime?
   completedAt DateTime?
+  recoveredAt DateTime?
   executionId String?                @unique
   workerId    String?
   attempt     Int                    @default(1)

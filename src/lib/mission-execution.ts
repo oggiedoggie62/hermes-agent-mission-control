@@ -1,4 +1,4 @@
-/* agent: codex | model: gpt-5 | date: 2026-07-15 */
+/* agent: codex | model: gpt-5 | date: 2026-07-21 */
 import { randomUUID } from "crypto";
 import { Prisma, type MissionExecution } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -18,6 +18,18 @@ interface ClaimRow {
   missionId: string;
   executionJson: Prisma.JsonValue;
 }
+
+export interface RecoveredExecution {
+  id: string;
+  missionId: string;
+  executionId: string | null;
+  previousStatus: "claimed" | "running";
+  lastActivityAt: Date;
+  recoveredAt: Date;
+  error: string;
+}
+
+interface RecoveryRow extends RecoveredExecution {}
 
 /**
  * Atomically claims one explicit AUTO execution.
@@ -115,9 +127,83 @@ export async function markExecutionRunning(executionId: string) {
 }
 
 export async function recordExecutionActivity(executionId: string) {
-  return prisma.missionExecution.update({
-    where: { executionId },
+  return prisma.missionExecution.updateMany({
+    where: { executionId, status: { in: ["claimed", "running"] } },
     data: { heartbeatAt: new Date() },
+  });
+}
+
+/**
+ * Atomically fails abandoned claimed/running attempts and their missions.
+ *
+ * SKIP LOCKED plus the active-status predicate lets multiple recovery workers
+ * cooperate without recovering the same attempt twice. Terminal attempts no
+ * longer count toward claimNextMission's database-backed capacity check.
+ */
+export async function recoverStaleExecutions({
+  staleBefore,
+  recoveredBy,
+  staleThresholdSeconds,
+}: {
+  staleBefore: Date;
+  recoveredBy: string;
+  staleThresholdSeconds: number;
+}): Promise<RecoveredExecution[]> {
+  if (!recoveredBy.trim()) throw new Error("recoveredBy is required");
+  if (!Number.isInteger(staleThresholdSeconds) || staleThresholdSeconds < 1) {
+    throw new Error("staleThresholdSeconds must be a positive integer");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(20260715, 1)`;
+    return tx.$queryRaw<RecoveryRow[]>(Prisma.sql`
+      WITH candidates AS (
+        SELECT
+          e.id,
+          e."missionId",
+          e."executionId",
+          e.status AS "previousStatus",
+          COALESCE(e."heartbeatAt", e."startedAt", e."claimedAt", e."updatedAt", e."createdAt") AS "lastActivityAt"
+        FROM "MissionExecution" e
+        JOIN "Mission" m
+          ON m.id = e."missionId"
+         AND m.status = 'active'
+        WHERE e.provider = 'HERMES'::"ExecutionProvider"
+          AND e.mode = 'AUTO'::"ExecutionMode"
+          AND e.status IN ('claimed'::"MissionExecutionStatus", 'running'::"MissionExecutionStatus")
+          AND COALESCE(e."heartbeatAt", e."startedAt", e."claimedAt", e."updatedAt", e."createdAt") < ${staleBefore}
+        FOR UPDATE OF e, m SKIP LOCKED
+      ), recovered AS (
+        UPDATE "MissionExecution" e
+        SET status = 'failed'::"MissionExecutionStatus",
+            "completedAt" = NOW(),
+            "recoveredAt" = NOW(),
+            "heartbeatAt" = NOW(),
+            error = CONCAT(
+              'Stale execution recovered: previousStatus=', c."previousStatus"::text,
+              ' executionId=', COALESCE(c."executionId", 'unassigned'),
+              ' workerId=', COALESCE(e."workerId", 'unassigned'),
+              ' lastActivityAt=', c."lastActivityAt"::text,
+              ' staleThresholdSeconds=', ${staleThresholdSeconds}::text,
+              ' recoveredBy=', ${recoveredBy}
+            ),
+            "updatedAt" = NOW()
+        FROM candidates c
+        WHERE e.id = c.id
+          AND e.status IN ('claimed'::"MissionExecutionStatus", 'running'::"MissionExecutionStatus")
+        RETURNING e.id, e."missionId", e."executionId", c."previousStatus", c."lastActivityAt", e."recoveredAt", e.error
+      ), failed_missions AS (
+        UPDATE "Mission" m
+        SET status = 'failed',
+            "completedAt" = r."recoveredAt"
+        FROM recovered r
+        WHERE m.id = r."missionId"
+          AND m.status = 'active'
+        RETURNING m.id
+      )
+      SELECT r.* FROM recovered r
+      JOIN failed_missions m ON m.id = r."missionId"
+    `);
   });
 }
 
@@ -132,8 +218,8 @@ export async function finishExecution(
 ) {
   const completedAt = new Date();
   return prisma.$transaction(async (tx) => {
-    const execution = await tx.missionExecution.update({
-      where: { executionId },
+    const executions = await tx.missionExecution.updateManyAndReturn({
+      where: { executionId, status: { in: ["claimed", "running"] } },
       data: {
         status: outcome.status,
         heartbeatAt: completedAt,
@@ -141,6 +227,8 @@ export async function finishExecution(
         error: outcome.error ?? null,
       },
     });
+    const execution = executions[0];
+    if (!execution) return null;
     await tx.mission.update({
       where: { id: execution.missionId },
       data: {

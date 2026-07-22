@@ -1,4 +1,4 @@
-/* agent: codex | model: gpt-5.5 | date: 2026-07-20 */
+/* agent: codex | model: gpt-5 | date: 2026-07-21 */
 import assert from "node:assert/strict";
 import {
   classifySystemdActiveState,
@@ -131,6 +131,20 @@ async function main() {
   assert.deepEqual(healthy.pendingIdeas, { available: true, value: 0 });
   assert.equal(healthy.attention.length, 0);
   console.log("PASS successful zero remains authoritative data");
+
+  const recoveredStale = await getOperationsSummary(dependencies({
+    readMissions: async () => [{
+      id: "stale-mission",
+      title: "Recovered work",
+      status: "failed",
+      createdAt: new Date(0),
+      executions: [{ error: "Stale execution recovered", recoveredAt: new Date() }],
+    }],
+  }));
+  assert(recoveredStale.attention.some((item) =>
+    item.id === "failed-stale-mission" && item.label === "Recovered stale execution: Recovered work",
+  ));
+  console.log("PASS stale recovery is explicit in dashboard attention");
 
   const agentUnavailable = await getOperationsSummary(dependencies({
     readAgentState: async () => {

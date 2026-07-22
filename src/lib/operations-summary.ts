@@ -1,4 +1,4 @@
-/* agent: codex | model: gpt-5.5 | date: 2026-07-20 */
+/* agent: codex | model: gpt-5 | date: 2026-07-21 */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { prisma } from "@/lib/prisma";
@@ -27,6 +27,10 @@ interface MissionSummaryRow {
   title: string;
   status: string;
   createdAt: Date;
+  executions: Array<{
+    error: string | null;
+    recoveredAt: Date | null;
+  }>;
 }
 
 export interface OperationsSummary {
@@ -139,7 +143,17 @@ const defaultDependencies: OperationsSummaryDependencies = {
   readMissions: () =>
     prisma.mission.findMany({
       where: { isArchived: false },
-      select: { id: true, title: true, status: true, createdAt: true },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        createdAt: true,
+        executions: {
+          orderBy: { attempt: "desc" },
+          take: 1,
+          select: { error: true, recoveredAt: true },
+        },
+      },
       orderBy: { createdAt: "desc" },
     }),
   readPendingIdeas: () => prisma.idea.count({ where: { status: "pending" } }),
@@ -242,7 +256,15 @@ export async function getOperationsSummary(
         attention.push({ id: `review-${mission.id}`, severity: "warning", label: `Awaiting review: ${mission.title}`, href: "/missions" });
       } else if (mission.status === "failed") {
         failed += 1;
-        attention.push({ id: `failed-${mission.id}`, severity: "critical", label: `Failed mission: ${mission.title}`, href: "/missions" });
+        const latestExecution = mission.executions[0];
+        attention.push({
+          id: `failed-${mission.id}`,
+          severity: "critical",
+          label: latestExecution?.recoveredAt
+            ? `Recovered stale execution: ${mission.title}`
+            : `Failed mission: ${mission.title}`,
+          href: "/missions",
+        });
       }
     }
   } else {

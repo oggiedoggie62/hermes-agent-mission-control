@@ -1,4 +1,4 @@
-/* agent: codex | model: gpt-5 | date: 2026-07-14 */
+/* agent: codex | model: gpt-5 | date: 2026-07-21 */
 "use client";
 
 import { useState } from "react";
@@ -26,6 +26,7 @@ export function MissionCard({ m, colIcon, onArchive, now, stalledWarningMs }: Mi
   const age = now - new Date(m.createdAt).getTime();
   const isTimedState = m.status === "pending" || m.status === "active";
   const isStalled = isTimedState && age >= stalledWarningMs;
+  const latestExecution = m.executions?.[0];
 
   const handleArchive = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -86,6 +87,21 @@ export function MissionCard({ m, colIcon, onArchive, now, stalledWarningMs }: Mi
         <div className="mb-4 p-3 rounded-lg bg-cyan-500/5 border border-cyan-500/10">
           <div className="text-[9px] font-black uppercase tracking-wider text-cyan-400 mb-1">Result</div>
           <div className="text-[11px] text-slate-300 leading-relaxed whitespace-pre-wrap line-clamp-4">{m.result}</div>
+        </div>
+      )}
+      {m.status === "failed" && latestExecution?.error && (
+        <div className="mb-4 rounded-lg border border-rose-500/20 bg-rose-500/5 p-3">
+          <div className="mb-1 text-[9px] font-black uppercase tracking-wider text-rose-400">
+            {latestExecution.recoveredAt ? "Stale execution recovered" : "Execution failed"}
+          </div>
+          <div className="line-clamp-4 whitespace-pre-wrap text-[11px] leading-relaxed text-rose-200">
+            {latestExecution.error}
+          </div>
+          {latestExecution.recoveredAt && (
+            <div className="mt-1 text-[9px] text-slate-500">
+              Recovered {new Date(latestExecution.recoveredAt).toLocaleString()}
+            </div>
+          )}
         </div>
       )}
 

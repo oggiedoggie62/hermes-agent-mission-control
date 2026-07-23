@@ -1,10 +1,16 @@
-/* agent: codex | model: gpt-5 | date: 2026-07-21 */
+/* agent: codex | model: gpt-5 | date: 2026-07-22 */
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { claimNextMission, finishExecution, markExecutionRunning, recordExecutionActivity, recoverStaleExecutions } from "../src/lib/mission-execution";
+import {
+  buildHermesMissionPrompt,
+  executionContractFailure,
+  validateCompletionAcknowledgement,
+  validateDebrief,
+} from "../src/lib/hermes-debrief-contract";
+import { selectMissionDebriefPath } from "../src/lib/mission-debrief-filename";
 import { prisma } from "../src/lib/prisma";
 
 const pollSeconds = Number(process.env.MISSION_DISPATCH_POLL_SECONDS ?? "45");
@@ -32,19 +38,6 @@ const agentosRoot = process.env.AGENTOS_ROOT?.trim() || "/home/oggie/AI/AgentOS"
 let stopping = false;
 let wakeFromSleep: (() => void) | null = null;
 let sleepTimer: NodeJS.Timeout | null = null;
-
-function validateDebrief(content: string) {
-  const requiredSections = ["Summary", "Work Performed", "Evidence", "Decisions Made"];
-  for (const section of requiredSections) {
-    const pattern = new RegExp(`^##\\s+${section}\\s*$`, "m");
-    if (!pattern.test(content)) return `Debrief is missing required section: ${section}`;
-    const body = content.match(
-      new RegExp(`^##\\s+${section}\\s*$([\\s\\S]*?)(?=^##\\s|(?![\\s\\S]))`, "m"),
-    )?.[1].trim();
-    if (!body) return `Debrief section is empty: ${section}`;
-  }
-  return null;
-}
 
 async function readValidDebrief(absolutePath: string) {
   try {
@@ -109,21 +102,19 @@ async function dispatchOnce() {
     const mission = await prisma.mission.findUniqueOrThrow({ where: { id: claim.missionId } });
     missionId = mission.id;
 
-    const debriefName = `${mission.id}-${executionId}.debrief.md`;
-    const debriefPath = `Logs/missions/${debriefName}`;
-    const absoluteDebriefPath = path.join(agentosRoot, debriefPath);
-    const prompt = [
-      "You are a temporary Hermes execution for one claimed Mission Control mission.",
-      `Mission ID: ${mission.id}`,
-      `Execution ID: ${executionId}`,
-      `Title: ${mission.title}`,
-      `Priority: ${mission.priority}`,
-      `Description: ${mission.description}`,
-      "Complete only this mission.",
-      `Write a debrief to ${absoluteDebriefPath}.`,
-      "Include Summary, Work Performed, Evidence, and Decisions Made sections.",
-      "Your final response must be a concise result summary.",
-    ].join("\n");
+    const { debriefPath, absoluteDebriefPath } = await selectMissionDebriefPath({
+      title: mission.title,
+      executionId,
+      agentosRoot,
+    });
+    const prompt = buildHermesMissionPrompt({
+      missionId: mission.id,
+      executionId,
+      title: mission.title,
+      priority: mission.priority,
+      description: mission.description,
+      absoluteDebriefPath,
+    });
 
     console.log(`[${new Date().toISOString()}] claimed mission=${mission.id} execution=${executionId} dispatcher=${dispatcherId}`);
     await markExecutionRunning(executionId);
@@ -136,22 +127,28 @@ async function dispatchOnce() {
     }
     if (result.code === 0) {
       const debrief = await readValidDebrief(absoluteDebriefPath);
-      if (!result.stdout) {
-        await finishExecution(executionId, {
-          status: "failed",
-          error: "Hermes exited successfully but returned no result summary",
-        });
-        console.error(`[${new Date().toISOString()}] failed mission=${missionId} execution=${executionId}: missing result summary`);
-        return;
-      }
-      if (debrief.error) {
-        await finishExecution(executionId, { status: "failed", error: debrief.error });
-        console.error(`[${new Date().toISOString()}] failed mission=${missionId} execution=${executionId}: ${debrief.error}`);
+      const acknowledgement = validateCompletionAcknowledgement(result.stdout, {
+        missionId: mission.id,
+        executionId,
+        absoluteDebriefPath,
+      });
+      const contractErrors = [
+        acknowledgement.error,
+        debrief.error ?? null,
+      ].filter((error): error is string => Boolean(error));
+      if (contractErrors.length) {
+        const error = executionContractFailure(
+          contractErrors,
+          result.stdout,
+          result.stderr,
+        );
+        await finishExecution(executionId, { status: "failed", error });
+        console.error(`[${new Date().toISOString()}] failed mission=${missionId} execution=${executionId}: ${error}`);
         return;
       }
       await finishExecution(executionId, {
         status: "completed",
-        result: result.stdout,
+        result: acknowledgement.resultSummary,
         debriefPath,
       });
       console.log(`[${new Date().toISOString()}] completed mission=${missionId} execution=${executionId}`);

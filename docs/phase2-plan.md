@@ -75,6 +75,12 @@ Phase 2.2 prioritizes daily operational value over appearance-only redesign. Wor
      - Post-claim guarded failure boundary: any failure after claim fails the execution/mission and releases capacity (no retries; not general stale recovery).
      - Isolated harness assertions: queued→claimed→running, concurrency 1, valid debrief completion, missing debrief failure, post-claim failure then subsequent claim.
      - Production verification timestamps are recorded in `MISSION_CONTROL.md` and the AgentOS work log after each successful stop → build → start → live check.
+   - [x] Harden the temporary Hermes debrief contract and failure observability.
+     - Prompt requires the exact absolute debrief path, four non-empty required sections, exact-file existence/readability verification, and no success response before artifact verification.
+     - Stdout is a mandatory concise acknowledgement with exact Mission ID, execution ID, debrief path, and explicit written confirmation; the dispatcher independently validates the exact file and never trusts stdout alone.
+     - Contract failures retain existing failed Mission/execution semantics while persisting independently bounded 2,000-character stdout/stderr excerpts with configured-secret and common-credential redaction.
+     - No-model-cost tests cover valid acknowledgement plus debrief, acknowledgement without file, file without valid acknowledgement, wrong-path acknowledgement, malformed debrief, and bounded/redacted persisted diagnostics.
+     - Production verified 2026-07-23 00:09 MDT: stop → build → restart passed; bounded diagnostics exposed the systemd PATH omission for the installed Codex runtime; only `/home/oggie/.npm-global/bin` was added to the dispatcher unit and installed copy; the live process resolved `codex-cli 0.145.0`; a fresh harmless AUTO mission completed pending/queued → active/claimed/running → completed/Awaiting Review with exact acknowledgement and a valid four-section debrief; exact fixtures and artifact cleaned.
    - [x] Preserve the legacy global temporary-file cron worker unchanged as a rollback path; disable its cron entry while the dispatcher is active to prevent competing claims.
    - [x] **Deployment & Operations:** systemd user services for Mission Control web and deterministic dispatcher so production survives Hermes Desktop/terminal exit.
      - Units: `mission-control.service`, `mission-dispatcher.service` under `~/.config/systemd/user/` (sources in `deploy/systemd/user/`).

@@ -12,7 +12,7 @@ StartLimitBurst=5
 Type=simple
 WorkingDirectory=/home/oggie/mission-control
 Environment=NODE_ENV=production
-Environment=PATH=/home/oggie/mission-control/node_modules/.bin:/home/oggie/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PATH=/home/oggie/mission-control/node_modules/.bin:/home/oggie/.local/bin:/home/oggie/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
 Environment=MISSION_DISPATCH_CONCURRENCY=1
 # Secrets and AGENTOS_ROOT/HERMES paths come from project .env via systemd-exec.cjs.
 # .env must be owned by the service user and mode 0600.

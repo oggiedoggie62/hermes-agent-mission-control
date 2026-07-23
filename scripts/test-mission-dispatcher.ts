@@ -388,7 +388,14 @@ async function main() {
       return row?.status === "completed" ? row : null;
     }, "valid execution completion");
     const completedMission = await prisma.mission.findUniqueOrThrow({ where: { id: valid.id } });
-    if (!completed.completedAt || completedMission.status !== "completed" || !completedMission.debriefPath || !completedMission.result) {
+    if (
+      !completed.completedAt
+      || completedMission.status !== "completed"
+      || !completedMission.debriefPath
+      || completedMission.result !== "Controlled dispatcher verification completed."
+      || completedMission.result.includes("MISSION CONTROL COMPLETION")
+      || completedMission.result.includes("Mission ID:")
+    ) {
       throw new Error("Valid debrief did not produce completed/Awaiting Review persistence");
     }
     await Promise.all([stopDispatcher(first.child), stopDispatcher(second.child)]);
@@ -405,10 +412,95 @@ async function main() {
       return row ?? null;
     }, "missing-debrief execution failure");
     const failedMission = await prisma.mission.findUniqueOrThrow({ where: { id: missing.id } });
-    if (!failed.error?.includes("missing or unreadable") || failedMission.status !== "failed") {
+    if (
+      !failed.error?.includes("missing or unreadable")
+      || !failed.error.includes("MISSION CONTROL COMPLETION")
+      || !failed.error.includes("stdout excerpt")
+      || !failed.error.includes("stderr excerpt")
+      || failedMission.status !== "failed"
+    ) {
       throw new Error("Missing debrief did not persist a clear execution and mission failure");
     }
     await stopDispatcher(missingDispatcher.child);
+
+    const runContractFailure = async (
+      suffix: string,
+      description: string,
+      expectedError: RegExp,
+      extraEnv: Record<string, string> = {},
+    ) => {
+      const mission = await prisma.mission.create({
+        data: {
+          agentId: "hermes",
+          title: `${marker}-${suffix}`,
+          description,
+          priority: "high",
+          executionMode: "AUTO",
+          executions: { create: { mode: "AUTO" } },
+        },
+      });
+      const dispatcher = startDispatcher(
+        `${marker}:dispatcher-${suffix}`,
+        controlDir,
+        agentosRoot,
+        extraEnv,
+      );
+      const runningExecution = await waitFor(async () => {
+        const row = await prisma.missionExecution.findFirst({
+          where: { missionId: mission.id, status: "running" },
+        });
+        return row ?? null;
+      }, `${suffix} execution to reach running`);
+      if (!runningExecution.executionId) throw new Error(`${suffix} execution ID was not persisted`);
+      await writeFile(path.join(controlDir, `release-${runningExecution.executionId}`), "release\n");
+      const failedExecution = await waitFor(async () => {
+        const row = await prisma.missionExecution.findFirst({
+          where: { missionId: mission.id, status: "failed" },
+        });
+        return row ?? null;
+      }, `${suffix} execution failure`);
+      const failedContractMission = await prisma.mission.findUniqueOrThrow({
+        where: { id: mission.id },
+      });
+      await stopDispatcher(dispatcher.child);
+      if (
+        failedContractMission.status !== "failed"
+        || !failedExecution.error
+        || !expectedError.test(failedExecution.error)
+      ) {
+        throw new Error(`${suffix} did not persist the expected contract failure: ${failedExecution.error}`);
+      }
+      return failedExecution;
+    };
+
+    const invalidAcknowledgement = await runContractFailure(
+      "invalid-acknowledgement",
+      "[stub:invalid-acknowledgement]",
+      /completion acknowledgement was missing, malformed/,
+    );
+    const wrongPathAcknowledgement = await runContractFailure(
+      "wrong-path-acknowledgement",
+      "[stub:wrong-path-acknowledgement]",
+      /exact debrief path/,
+    );
+    const malformedDebrief = await runContractFailure(
+      "malformed-debrief",
+      "[stub:malformed-debrief]",
+      /Debrief is missing required section: Evidence/,
+    );
+    const diagnosticSecret = "dispatcher-contract-secret-must-be-redacted";
+    const diagnosticFailure = await runContractFailure(
+      "diagnostic-failure",
+      "[stub:diagnostic-failure]",
+      /stdout excerpt \(2000\/.*\).*\[truncated\][\s\S]*stderr excerpt \(2000\/.*\).*\[truncated\]/,
+      { MISSION_DISPATCH_TEST_SECRET: diagnosticSecret },
+    );
+    if (
+      diagnosticFailure.error?.includes(diagnosticSecret)
+      || (diagnosticFailure.error?.length ?? Number.POSITIVE_INFINITY) > 4_500
+    ) {
+      throw new Error("Persisted contract diagnostics were not bounded and secret-safe");
+    }
 
     // Post-claim failure boundary: fail immediately after claim, release capacity, claim next.
     const postClaimFail = await prisma.mission.create({
@@ -497,8 +589,12 @@ async function main() {
     console.log(`PASS recovery capacity release: blocker=${capacityBlocker.id} next=${recoveryNext.id} completed`);
     console.log(`PASS Hermes execution timeout: execution=${timedOutExecution.executionId} mission_status=${timedOutMission.status} capacity=0`);
     console.log(`PASS global concurrency: dispatchers=2 eligible=2 max_active=${maxActive} initial_launches=1`);
-    console.log(`PASS valid debrief: execution=${completed.executionId} mission_status=${completedMission.status}`);
-    console.log(`PASS missing debrief: execution=${failed.executionId} mission_status=${failedMission.status} error=${failed.error}`);
+    console.log(`PASS valid acknowledgement + valid debrief: execution=${completed.executionId} mission_status=${completedMission.status}`);
+    console.log(`PASS acknowledgement without file: execution=${failed.executionId} mission_status=${failedMission.status}`);
+    console.log(`PASS file without valid acknowledgement: execution=${invalidAcknowledgement.executionId} failed`);
+    console.log(`PASS acknowledgement with wrong path: execution=${wrongPathAcknowledgement.executionId} failed`);
+    console.log(`PASS malformed debrief: execution=${malformedDebrief.executionId} failed`);
+    console.log(`PASS bounded stdout/stderr diagnostics: execution=${diagnosticFailure.executionId} error_length=${diagnosticFailure.error?.length}`);
     console.log(`PASS post-claim failure: execution=${postClaimFailed.executionId} mission_status=${postClaimFailedMission.status} next=${nextCompleted.executionId}`);
   } finally {
     await Promise.all(Array.from(children, (child) => killDispatcher(child)));

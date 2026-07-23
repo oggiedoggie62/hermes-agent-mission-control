@@ -110,6 +110,15 @@ Phase 2.2 prioritizes daily operational value over appearance-only redesign. Wor
    - [x] Add active-board search plus agent, priority, and status filtering.
    - [x] Add compact shown/total and completed-awaiting-review counts.
    - [x] Preserve and verify mission creation, debrief access, and explicit human review before archival.
+   - [x] Add bounded Pending Mission Management.
+     - Edit only pending, unclaimed, non-archived Missions with one queued unclaimed execution; update the existing Mission and attempt in one transaction.
+     - Reuse creation policy for agent/execution-mode changes, including forcing unsupported agents to MANUAL.
+     - Cancel only the same eligible pending/unclaimed shape; retain both audit rows as distinct `cancelled` states with one shared terminal timestamp.
+     - Serialize edit, cancel, and dispatcher claim using the existing transaction-scoped advisory lock so no partial or double outcome can commit.
+     - Require the existing internal API Bearer credential; return validation errors as 400 and state/race conflicts as 409.
+     - Add minimal Edit/Cancel pending-card controls and a separate Cancelled column without redesigning the Missions page.
+     - Isolated tests cover missing/invalid authorization, blank validation, supported and unsupported mode changes, preserved IDs/attempt counts, cancellation audit history, repeat/cancelled/claimed rejection, unclaimability, concurrent edit versus claim, concurrent cancel versus claim, and exact cleanup.
+     - Production verified 2026-07-22: additive schema sync and stop → build → restart passed; controlled edit and cancellation retained exactly one attempt each and remained unclaimed across a full dispatcher poll; exact rows cleaned; both services active.
 3. **Ideas and To-Do capture**
    - Planned lifecycle: **Idea → To-Do → Mission → Review → Archive**.
    - [x] Add one-field Quick Capture with Enter-to-save and Idea as the default type.

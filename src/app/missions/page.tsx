@@ -1,6 +1,6 @@
-/* agent: codex | model: gpt-5.5 | date: 2026-07-20 */
+/* agent: codex | model: gpt-5 | date: 2026-07-22 */
 import { prisma } from "@/lib/prisma";
-import { Clock, CheckCircle2, Circle, AlertCircle } from "lucide-react";
+import { Clock, CheckCircle2, Circle, AlertCircle, Ban } from "lucide-react";
 import { CreateMissionButton } from "../../components/create-mission-button";
 import { getMissionAgentChoices } from "@/lib/mission-agents";
 import { KanbanClient } from "./kanban-client";
@@ -21,6 +21,7 @@ export default async function MissionsPage() {
     { title: "Active", status: "active", icon: <Clock className="w-4 h-4 text-cyan-400" /> },
     { title: "Awaiting Review", status: "completed", icon: <CheckCircle2 className="w-4 h-4 text-emerald-400" /> },
     { title: "Failed", status: "failed", icon: <AlertCircle className="w-4 h-4 text-rose-500" /> },
+    { title: "Cancelled", status: "cancelled", icon: <Ban className="w-4 h-4 text-slate-500" /> },
   ];
 
   return (

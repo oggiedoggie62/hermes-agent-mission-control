@@ -11,6 +11,7 @@
     "dispatcher": "tsx scripts/mission-dispatcher.ts",
     "test:dispatcher": "tsx scripts/test-mission-dispatcher.ts",
     "test:mission-dispatch-ux": "tsx scripts/test-mission-dispatch-ux.ts",
+    "test:pending-missions": "tsx scripts/test-pending-mission-management.ts",
     "test:idea-edit": "tsx scripts/test-idea-edit.ts",
     "test:operations-summary": "tsx scripts/test-operations-summary.ts",
     "lint": "eslint",

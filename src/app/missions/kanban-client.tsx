@@ -23,6 +23,14 @@ interface Mission {
   executionMode: "AUTO" | "MANUAL";
 }
 
+interface MissionEdit {
+  title: string;
+  description: string;
+  agentId: string;
+  priority: string;
+  executionMode: "AUTO" | "MANUAL";
+}
+
 interface Column {
   title: string;
   status: string;
@@ -174,6 +182,33 @@ export function KanbanClient({ missions, agents, columns }: KanbanClientProps) {
     await refreshMissionState();
   };
 
+  const runPendingAction = async (id: string, body: Record<string, unknown>) => {
+    const internalApiSecret = window.prompt("Enter the Mission Control internal API secret.");
+    if (!internalApiSecret) throw new Error("Authorization is required");
+    const response = await fetch(`/api/missions/${id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${internalApiSecret}`,
+      },
+      body: JSON.stringify(body),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(data?.error || "Mission update failed");
+    setLocalMissions((previous) => previous.map((mission) => (
+      mission.id === id ? { ...mission, ...data } : mission
+    )));
+    await refreshMissionState();
+  };
+
+  const handleEditPending = (id: string, edit: MissionEdit) => (
+    runPendingAction(id, { action: "editPending", ...edit })
+  );
+
+  const handleCancelPending = (id: string) => (
+    runPendingAction(id, { action: "cancelPending" })
+  );
+
   return (
     <div className="p-8 max-w-[1400px] mx-auto min-h-screen text-slate-200">
       <div className="flex justify-between items-end mb-10">
@@ -224,7 +259,7 @@ export function KanbanClient({ missions, agents, columns }: KanbanClientProps) {
         {worker?.lastError && <span className="w-full text-rose-400">Worker warning: {worker.lastError}</span>}
       </section>
 
-      <div className={`grid gap-6 items-start ${visibleColumns.length === 1 ? "grid-cols-1" : "grid-cols-4"}`}>
+      <div className={`grid gap-6 items-start ${visibleColumns.length === 1 ? "grid-cols-1" : visibleColumns.length === 5 ? "grid-cols-5" : "grid-cols-4"}`}>
         {visibleColumns.map((col) => (
           <div key={col.status} className="flex flex-col gap-4">
             <div className="flex items-center gap-2 px-2 mb-2">
@@ -242,9 +277,12 @@ export function KanbanClient({ missions, agents, columns }: KanbanClientProps) {
                   <MissionCard
                     key={m.id}
                     m={m}
+                    agents={agents}
                     colIcon={col.icon}
                     onArchive={handleArchive}
                     onEnableAutomatic={handleEnableAutomatic}
+                    onEdit={handleEditPending}
+                    onCancel={handleCancelPending}
                     now={now}
                     stalledWarningMs={STALLED_WARNING_MS}
                   />

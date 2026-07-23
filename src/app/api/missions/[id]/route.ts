@@ -3,6 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { supportsAutomaticDispatch } from "@/lib/mission-dispatch-ux";
 import { requireInternalApiSecret } from "@/lib/internal-api-auth";
+import {
+  cancelPendingMission,
+  editPendingMission,
+  PendingMissionConflictError,
+  PendingMissionValidationError,
+} from "@/lib/pending-mission-management";
 
 export async function PATCH(
   req: NextRequest,
@@ -66,6 +72,16 @@ export async function PATCH(
       return NextResponse.json(mission);
     }
 
+    if (action === "editPending" || action === "cancelPending") {
+      const authorizationError = requireInternalApiSecret(req);
+      if (authorizationError) return authorizationError;
+
+      const mission = action === "editPending"
+        ? await editPendingMission(id, body)
+        : await cancelPendingMission(id);
+      return NextResponse.json(mission);
+    }
+
     const data: Record<string, unknown> = {};
     if (result !== undefined) data.result = result;
     if (debriefPath !== undefined) data.debriefPath = debriefPath;
@@ -82,6 +98,12 @@ export async function PATCH(
 
     return NextResponse.json(mission);
   } catch (e) {
+    if (e instanceof PendingMissionValidationError) {
+      return NextResponse.json({ error: e.message }, { status: 400 });
+    }
+    if (e instanceof PendingMissionConflictError) {
+      return NextResponse.json({ error: e.message }, { status: 409 });
+    }
     if (e instanceof Error && (
       e.message === "MISSION_NOT_ELIGIBLE"
       || e.message === "MISSION_AGENT_NOT_ELIGIBLE"

@@ -24,7 +24,7 @@ model AgentState {
 }
 
 /// A unit of work assigned to an agent. Agents pick up pending missions,
-/// run them, and update status to "completed" or "failed".
+/// run them, and update status to "completed", "failed", or "cancelled".
 model Mission {
   id                String             @id @default(uuid())
   agentId           String
@@ -61,6 +61,7 @@ enum MissionExecutionStatus {
   running
   completed
   failed
+  cancelled
 }
 
 /// One durable execution attempt for a Mission. The future dispatcher may claim

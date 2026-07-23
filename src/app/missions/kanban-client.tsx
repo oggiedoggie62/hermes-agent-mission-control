@@ -1,4 +1,4 @@
-/* agent: codex | model: gpt-5 | date: 2026-07-21 */
+/* agent: codex | model: gpt-5 | date: 2026-07-22 */
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -19,6 +19,7 @@ interface Mission {
   debriefPath: string | null;
   createdAt: Date | string;
   completedAt: Date | string | null;
+  executionProvider: "HERMES";
   executionMode: "AUTO" | "MANUAL";
 }
 
@@ -150,6 +151,29 @@ export function KanbanClient({ missions, agents, columns }: KanbanClientProps) {
     }
   };
 
+  const handleEnableAutomatic = async (id: string) => {
+    const internalApiSecret = window.prompt("Enter the Mission Control internal API secret to enable automatic execution.");
+    if (!internalApiSecret) {
+      throw new Error("Authorization is required to enable automatic execution");
+    }
+    const res = await fetch(`/api/missions/${id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${internalApiSecret}`,
+      },
+      body: JSON.stringify({ action: "enableAutomaticExecution" }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(data?.error || "Failed to enable automatic execution");
+    }
+    setLocalMissions((previous) => previous.map((mission) => (
+      mission.id === id ? { ...mission, ...data } : mission
+    )));
+    await refreshMissionState();
+  };
+
   return (
     <div className="p-8 max-w-[1400px] mx-auto min-h-screen text-slate-200">
       <div className="flex justify-between items-end mb-10">
@@ -220,6 +244,7 @@ export function KanbanClient({ missions, agents, columns }: KanbanClientProps) {
                     m={m}
                     colIcon={col.icon}
                     onArchive={handleArchive}
+                    onEnableAutomatic={handleEnableAutomatic}
                     now={now}
                     stalledWarningMs={STALLED_WARNING_MS}
                   />

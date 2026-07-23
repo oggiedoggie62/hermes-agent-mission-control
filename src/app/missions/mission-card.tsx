@@ -1,14 +1,15 @@
-/* agent: codex | model: gpt-5 | date: 2026-07-21 */
+/* agent: codex | model: gpt-5 | date: 2026-07-22 */
 "use client";
 
 import { useState } from "react";
-import { Archive, AlertCircle } from "lucide-react";
+import { Archive, AlertCircle, Play } from "lucide-react";
 import { missionQueueTimingLabel } from "@/lib/mission-dispatch-ux";
 
 interface MissionCardProps {
   m: any;
   colIcon: React.ReactNode;
   onArchive: (id: string) => Promise<void>;
+  onEnableAutomatic: (id: string) => Promise<void>;
   now: number;
   stalledWarningMs: number;
 }
@@ -21,8 +22,9 @@ function formatDuration(milliseconds: number) {
   return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
 }
 
-export function MissionCard({ m, colIcon, onArchive, now, stalledWarningMs }: MissionCardProps) {
+export function MissionCard({ m, colIcon, onArchive, onEnableAutomatic, now, stalledWarningMs }: MissionCardProps) {
   const [isArchiving, setIsArchiving] = useState(false);
+  const [isPromoting, setIsPromoting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const age = now - new Date(m.createdAt).getTime();
   const isTimedState = m.status === "pending" || m.status === "active";
@@ -41,6 +43,20 @@ export function MissionCard({ m, colIcon, onArchive, now, stalledWarningMs }: Mi
       setError(err.message || "Failed to archive");
     } finally {
       setIsArchiving(false);
+    }
+  };
+
+  const handleEnableAutomatic = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsPromoting(true);
+    setError(null);
+    try {
+      await onEnableAutomatic(m.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to enable automatic execution");
+    } finally {
+      setIsPromoting(false);
     }
   };
 
@@ -74,10 +90,23 @@ export function MissionCard({ m, colIcon, onArchive, now, stalledWarningMs }: Mi
       <h3 className="text-[15px] font-bold text-white mb-1 group-hover:text-cyan-400 transition-colors tracking-tight">{m.title}</h3>
       <p className="text-[12px] text-slate-400 mb-4 line-clamp-2 leading-relaxed">{m.description}</p>
       {m.status === "pending" && (
-        <div className={`mb-3 flex items-center gap-1 text-[10px] font-bold ${isStalled ? "text-amber-400" : "text-slate-500"}`}>
-          {isStalled && <AlertCircle className="h-3 w-3" aria-hidden="true" />}
-          {missionQueueTimingLabel(isAutomatic ? "AUTO" : "MANUAL", formatDuration(age), isStalled)}
-        </div>
+        <>
+          <div className={`mb-3 flex items-center gap-1 text-[10px] font-bold ${isStalled ? "text-amber-400" : "text-slate-500"}`}>
+            {isStalled && <AlertCircle className="h-3 w-3" aria-hidden="true" />}
+            {missionQueueTimingLabel(isAutomatic ? "AUTO" : "MANUAL", formatDuration(age), isStalled)}
+          </div>
+          {!isAutomatic && m.executionProvider === "HERMES" && m.agentId.toLowerCase() === "hermes" && (
+            <button
+              type="button"
+              onClick={handleEnableAutomatic}
+              disabled={isPromoting}
+              className="mb-3 inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/20 bg-cyan-500/10 px-2.5 py-1.5 text-[10px] font-black uppercase text-cyan-400 transition-colors hover:bg-cyan-500/20 disabled:opacity-50"
+            >
+              <Play className="h-3 w-3" aria-hidden="true" />
+              {isPromoting ? "Enabling..." : "Make Automatic"}
+            </button>
+          )}
+        </>
       )}
       {m.status === "active" && isStalled && (
         <div className="mb-3 flex items-center gap-1 text-[10px] font-bold text-amber-400">

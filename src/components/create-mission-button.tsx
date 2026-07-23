@@ -1,10 +1,10 @@
-/* agent: codex | model: gpt-5 | date: 2026-07-21 */
+/* agent: codex | model: gpt-5 | date: 2026-07-22 */
 "use client";
 
 import { useState } from "react";
 import { Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { resolveMissionExecutionMode, supportsAutomaticDispatch, type MissionExecutionMode } from "@/lib/mission-dispatch-ux";
+import { supportsAutomaticDispatch, type MissionExecutionMode } from "@/lib/mission-dispatch-ux";
 
 interface MissionAgent {
   id: string;
@@ -39,9 +39,7 @@ export function CreateMissionButton({
   const [error, setError] = useState<string | null>(null);
   const initialAgentId = agents[0]?.id ?? "";
   const [selectedAgentId, setSelectedAgentId] = useState(initialAgentId);
-  const [executionMode, setExecutionMode] = useState<MissionExecutionMode>(() =>
-    resolveMissionExecutionMode(initialAgentId),
-  );
+  const [executionMode, setExecutionMode] = useState<MissionExecutionMode>("MANUAL");
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -87,7 +85,7 @@ export function CreateMissionButton({
         onClick={() => {
           setError(null);
           setSelectedAgentId(initialAgentId);
-          setExecutionMode(resolveMissionExecutionMode(initialAgentId));
+          setExecutionMode("MANUAL");
           setOpen(true);
         }}
         disabled={agents.length === 0}
@@ -126,7 +124,7 @@ export function CreateMissionButton({
                     onChange={(event) => {
                       const nextAgentId = event.target.value;
                       setSelectedAgentId(nextAgentId);
-                      setExecutionMode(resolveMissionExecutionMode(nextAgentId));
+                      setExecutionMode("MANUAL");
                     }}
                     className="bg-slate-800 border border-white/5 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-500 transition-colors"
                   >
@@ -153,15 +151,15 @@ export function CreateMissionButton({
                   onChange={(event) => setExecutionMode(event.target.value as MissionExecutionMode)}
                   className="bg-slate-800 border border-white/5 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-500 transition-colors"
                 >
-                  {supportsAutomaticDispatch(selectedAgentId) && (
-                    <option value="AUTO">Automatic · dispatch with Hermes</option>
-                  )}
-                  <option value="MANUAL">Manual · wait for operator launch</option>
+                  <option value="MANUAL">Manual</option>
+                  {supportsAutomaticDispatch(selectedAgentId) && <option value="AUTO">Automatic</option>}
                 </select>
                 <p className="text-[10px] leading-relaxed text-slate-500">
                   {supportsAutomaticDispatch(selectedAgentId)
-                    ? "Hermes missions dispatch automatically by default. Choose Manual to hold the mission for operator launch."
-                    : "No automatic dispatcher is configured for this agent. This mission will wait for manual launch."}
+                    ? executionMode === "AUTO"
+                      ? "Automatic: the deterministic dispatcher may claim and launch this mission."
+                      : "Manual: this mission waits for explicit launch."
+                    : "Manual: this mission waits for explicit launch. No automatic dispatcher is configured for this agent."}
                 </p>
               </div>
 

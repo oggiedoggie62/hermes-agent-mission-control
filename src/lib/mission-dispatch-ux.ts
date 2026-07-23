@@ -1,4 +1,4 @@
-/* agent: codex | model: gpt-5 | date: 2026-07-21 */
+/* agent: codex | model: gpt-5 | date: 2026-07-22 */
 export type MissionExecutionMode = "AUTO" | "MANUAL";
 export type DispatcherHealth = "up" | "down" | "unknown";
 
@@ -14,7 +14,7 @@ export function resolveMissionExecutionMode(
     throw new Error("executionMode must be AUTO or MANUAL");
   }
   if (!supportsAutomaticDispatch(agentId)) return "MANUAL";
-  return requestedMode === "MANUAL" ? "MANUAL" : "AUTO";
+  return requestedMode === "AUTO" ? "AUTO" : "MANUAL";
 }
 
 export function missionQueueTimingLabel(

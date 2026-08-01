@@ -1,9 +1,4 @@
 [Unit]
-#
-# Canonical deployment: ./scripts/deploy.sh (or "npm run deploy")
-# Enforces clean stop → rm -rf .next → build → asset verification → start.
-# See scripts/deploy.sh and MC-server-launch.md
-#
 Description=Mission Control production web server (Next.js :3000)
 Documentation=file:///home/oggie/mission-control/MC-server-launch.md
 After=network-online.target

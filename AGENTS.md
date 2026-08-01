@@ -77,3 +77,21 @@ trading PnL cards, Polymarket integration, content briefs, a longform
 script pipeline, YouTube analytics. It's not shippable as a public
 template. This repo is the generic scaffold; the user builds their own
 personality on top.
+
+## Deployment
+
+For any production changes that affect the running web server:
+
+**Always use the canonical deployment script:**
+
+```bash
+./scripts/deploy.sh
+# or
+npm run deploy
+```
+
+This script enforces a clean, verified deployment (stop, rm -rf .next, build, asset verification, start, live checks).
+
+Do not run manual `npm run build` + restart for production deploys. The script exists specifically to prevent asset reference mismatches (missing CSS/JS chunks) that cause unstyled pages.
+
+See `scripts/deploy.sh`, `MC-server-launch.md`, and the top of `MISSION_CONTROL.md`.

@@ -247,7 +247,7 @@ Codex review fixes applied and re-verified:
 - No-secret fixture test `scripts/test-systemd-exec-env.cjs` PASS (literal `$()`, backticks, spaces, equals; mode 0600 gate).
 - `.env` corrected to mode **0600** (`stat`: `oggie 600`).
 - Units gained `StartLimitIntervalSec=300` / `StartLimitBurst=5`; controlled `/bin/false` test reached `failed` after burst (NRestarts=5), then production units restored.
-- Stop → `npm run build` → install units (`diff` exact match) → `daemon-reload` → start both.
+- Stop → build → install units (`diff` exact match) → `daemon-reload` → start both.
 - `/api/health` → `{"ok":true,"db":"connected"}`; `/api/missions/state` and `/missions` HTTP 200.
 - Dispatcher survived full 45s+ idle poll; `worker.enabled=false`.
 - Ancestry under user systemd (`systemd(1)---systemd(1801)---...`); no Hermes Desktop.
@@ -356,20 +356,19 @@ Phase 2.2 is ordered around operational workflow improvements rather than an app
 
 ### Mandatory production verification sequence
 
-Use this sequence for every production verification:
+**Preferred:**
 
-1. Stop the running Next.js server.
-2. Run the production build and wait for successful completion.
-3. Start the server from the completed build.
-4. Perform live UI verification.
+```bash
+./scripts/deploy.sh
+```
 
-Do not run `next build` while a production server is using the same `.next` directory. Replacing generated output beneath a running server can leave its in-memory asset references out of sync with the files on disk, causing JavaScript or CSS asset failures after refresh.
+This single script performs the full reliable sequence with asset verification.
 
-Common commands:
+See `scripts/deploy.sh`.
 
 ```bash
 npm run dev
-npm run build
+./scripts/deploy.sh (preferred) or npm run build (for dev/CI)
 npm run start -- -p 3000
 npm run db:push
 ```

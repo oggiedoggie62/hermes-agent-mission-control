@@ -48,15 +48,17 @@ journalctl --user -u mission-dispatcher -n 100 --no-pager
 
 ### Deploy a new build
 
-Do **not** build inside `ExecStart`. Build first, then restart:
+**Use the canonical deployment script (the single recommended path):**
 
 ```bash
 cd /home/oggie/mission-control
-systemctl --user stop mission-control mission-dispatcher
-npm run build
-systemctl --user start mission-control mission-dispatcher
-# or: systemctl --user restart mission-control mission-dispatcher
+./scripts/deploy.sh
+# or: npm run deploy
 ```
+
+`scripts/deploy.sh` is the hardened, verified deployment entry point. It performs a full stop → clean .next → build → asset verification → start sequence and fails fast.
+
+See `scripts/deploy.sh` for the exact ordered steps and failure policy.
 
 ### Prerequisites
 

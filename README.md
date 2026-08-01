@@ -118,10 +118,17 @@ See `CLAUDE.md` for notes if you're editing this with Claude Code.
 
 ## Deploying
 
-Tested on Vercel. Push to GitHub, import on Vercel, set the env vars from
-`.env.example`, and you're done. Any Postgres host works - Neon and Vercel
-Postgres are the easiest.
+**Canonical (production):**
 
+```bash
+./scripts/deploy.sh
+# or
+npm run deploy
+```
+
+See `scripts/deploy.sh` and `MC-server-launch.md`.
+
+For development use `npm run dev`.
 ## License
 
 MIT. Fork it. Build something wild.

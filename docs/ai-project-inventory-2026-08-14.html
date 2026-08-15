@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Oggie's AI Project Inventory</title>
+  <style>
+    @page { size: Letter; margin: 0.62in; }
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #172033; background: #fff; font: 10.4pt/1.38 Arial, sans-serif; }
+    h1 { margin: 0 0 5px; color: #111827; font-size: 25pt; letter-spacing: -0.6px; }
+    .subtitle { margin: 0 0 18px; color: #526079; font-size: 11pt; }
+    .summary { margin: 0 0 19px; padding: 12px 14px; border-left: 4px solid #2563eb; background: #eff6ff; }
+    h2 { margin: 19px 0 8px; padding-bottom: 4px; color: #1e3a5f; border-bottom: 1px solid #cbd5e1; font-size: 15pt; page-break-after: avoid; }
+    h3 { margin: 10px 0 2px; color: #111827; font-size: 11pt; page-break-after: avoid; }
+    p { margin: 2px 0 6px; }
+    ul, ol { margin: 5px 0 9px 20px; padding: 0; }
+    li { margin: 2px 0; }
+    .project { break-inside: avoid; margin-bottom: 7px; }
+    .tag { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 9px; color: #fff; background: #64748b; font-size: 7.5pt; font-weight: bold; vertical-align: 1px; }
+    .active { background: #15803d; }
+    .resume { background: #b45309; }
+    .uncertain { background: #64748b; }
+    .footer { margin-top: 20px; padding-top: 8px; border-top: 1px solid #cbd5e1; color: #64748b; font-size: 8.5pt; }
+  </style>
+</head>
+<body>
+  <h1>Oggie's AI Project Inventory</h1>
+  <p class="subtitle">Offline re-entry guide, reconstructed August 14, 2026</p>
+
+  <div class="summary">
+    <strong>Best place to restart:</strong> Mission Control contains the most recent interrupted coding work. Operations Briefing, UFO Intel Dashboard, and YouTube Pipeline are the projects explicitly marked active in the AgentOS ledger. The larger goal is to make Mission Control the daily operational home for the whole AI ecosystem.
+  </div>
+
+  <h2>Highest-priority work</h2>
+
+  <div class="project"><h3>1. Mission Control <span class="tag resume">INTERRUPTED WORK</span></h3><p>Operations dashboard for agents, missions, Ideas and To-Dos, project knowledge, and homelab health. Completed work includes the mission Kanban, archive, automatic Hermes dispatcher, stale-run recovery, editing and cancellation, the Idea to To-Do to Mission lifecycle, AgentOS library, and system monitoring.</p><p><strong>Likely next work:</strong> finish the UFO Readiness and Ops Action Queue integrations currently present as uncommitted changes; then consider failed-mission retries, Duplicate and Run Now actions, project metadata, agent detail pages, and the command palette.</p></div>
+
+  <div class="project"><h3>2. Operations Briefing <span class="tag active">ACTIVE</span></h3><p>Daily dashboard over four Gmail accounts, intended to become Mission Control's Operations page. The Briefing Engine creates frozen-schema artifacts and the renderer presents them. Slices 1 and 2 are complete. Remaining work is accessibility and polish, followed by the Mission Control port. The last recorded operational blocker was unavailable Gmail connections.</p></div>
+
+  <div class="project"><h3>3. UFO Intel Dashboard <span class="tag active">ACTIVE</span></h3><p>Mint-side UFO data visualizer and HTML generator. It consumes the daily gatherer and reports, refreshes the UFO Network dashboard, and prepares the frontend visualization layer for the two-site publishing system.</p></div>
+
+  <div class="project"><h3>4. YouTube Pipeline <span class="tag active">ACTIVE</span></h3><p>Local transcription and content-repurposing pipeline. An offline, review-only content-kit MVP exists for saved transcripts and Keep notes.</p></div>
+
+  <h2>Core AI ecosystem</h2>
+  <div class="project"><h3>5. AgentOS</h3><p>Canonical shared memory and governance system for your agents: project registry, decisions, knowledge, mission debriefs, agent registry, homelab registry, and cross-agent history.</p></div>
+  <div class="project"><h3>6. Graphify</h3><p>Knowledge-graph layer over AgentOS content, producing graph data, reports, and visualizations.</p></div>
+  <div class="project"><h3>7. Hermes Desktop</h3><p>Desktop and session-management work, including recovered sessions, pinned conversations, and compression-lineage handling.</p></div>
+  <div class="project"><h3>8. Hermes Reminders</h3><p>Hermes scheduler and reminder-reliability work.</p></div>
+  <div class="project"><h3>9. Hermes Gmail and Composio</h3><p>Connection between Hermes and Gmail through Composio.</p></div>
+
+  <h2>UFO publishing ecosystem</h2>
+  <div class="project"><h3>10. UFO Network</h3><p>Umbrella project for two UFO news sites plus Mint-side content collection. Production copies live on the Mac Mini.</p></div>
+  <div class="project"><h3>11. UFO Readiness Gate</h3><p>Read-only PASS, WARN, or BLOCK check for source health, Hugo build freshness, content changes, and Git state.</p></div>
+  <div class="project"><h3>12. UFO Editorial Queue</h3><p>Routes collected material between the two sites, identifies duplicates, and applies verification labels.</p></div>
+  <div class="project"><h3>13. UFO Ingestion Truth</h3><p>Checks whether the ingestion pipeline's reported state agrees with its actual artifacts and results.</p></div>
+  <div class="project"><h3>14. UFO CMS Handoff</h3><p>Packages or validates the handoff from Mint-side gathering to the CMS and publishing side.</p></div>
+  <div class="project"><h3>15. UFO Intel Dashboard</h3><p>The active visualization project described in the priority section.</p></div>
+
+  <h2>Operations and reliability automation</h2>
+  <div class="project"><h3>16. Ops Action Queue</h3><p>Durable operator inbox with opened, acknowledged, reopened, priority-change, resolved, and machine-readable events.</p></div>
+  <div class="project"><h3>17. Project Action Reconciler</h3><p>Compares project-memory next steps with actual AgentOS and Hermes task stores to expose missing tracking.</p></div>
+  <div class="project"><h3>18. Project Next Action</h3><p>Produces a ranked queue from the newest project-memory next steps.</p></div>
+  <div class="project"><h3>19. Project Portfolio Index</h3><p>Local project inventory and indexing utility. Present on disk, but not clearly represented in the main ledger.</p></div>
+  <div class="project"><h3>20. Artifact SLA Monitor</h3><p>Detects stale or missing operational artifacts using explicit age limits.</p></div>
+  <div class="project"><h3>21. Cron Truth Auditor</h3><p>Checks whether scheduled jobs are actually running and whether their reported state is truthful.</p></div>
+  <div class="project"><h3>22. Note and Idea Radar</h3><p>Scans notes for ideas or actions that have not been captured properly.</p></div>
+  <div class="project"><h3>23. Ideas and To-Do Ingestion</h3><p>Brings external ideas and tasks into the AgentOS and Mission Control lifecycle.</p></div>
+  <div class="project"><h3>24. Obsidian Sync Check</h3><p>Monitors or verifies Obsidian synchronization. This has the newest project-memory update, dated August 14.</p></div>
+  <div class="project"><h3>25. Recurring Cost Ledger</h3><p>Tracks recurring services and costs.</p></div>
+  <div class="project"><h3>26. Git Backup Guardian</h3><p>Checks Git backup safety. Present locally but not well documented in the main ledger.</p></div>
+  <div class="project"><h3>27. Ops Change Digest and Ops Runbook Generator</h3><p>Utilities for summarizing system changes and generating operational documentation.</p></div>
+
+  <h2>Homelab and personal infrastructure</h2>
+  <div class="project"><h3>28. Homelab Heartbeat</h3><p>Service-health monitor with web dashboard, JSON output, and SQLite history.</p></div>
+  <div class="project"><h3>29. Homelab Health Check</h3><p>Health reporting across services, storage, networking, Docker, and remote systems.</p></div>
+  <div class="project"><h3>30. Homelab Services</h3><p>Docker, Portainer, Plex, Sonarr, Radarr, SABnzbd, and related Ubuntu server infrastructure.</p></div>
+  <div class="project"><h3>31. Homelab Morning Brief</h3><p>Daily Markdown and JSON briefing combining Nextcloud ideas, AgentOS projects, Docker state, and the UFO pipeline.</p></div>
+  <div class="project"><h3>32. OggiesCloud and Nextcloud</h3><p>Your personal Nextcloud deployment and supporting operations.</p></div>
+  <div class="project"><h3>33. Vaultwarden</h3><p>Password-manager hosting and migration or removal work. Backups are preserved in AgentOS.</p></div>
+  <div class="project"><h3>34. Mac Mini Guardian, Mac Bridge, and Mac Orchestrator</h3><p>Monitoring and coordination tools for the Mac Mini side of the environment.</p></div>
+  <div class="project"><h3>35. OBS Stream Manager</h3><p>Streaming and OBS automation tooling.</p></div>
+  <div class="project"><h3>36. N8N Automation</h3><p>Local automation workspace.</p></div>
+
+  <h2>Websites and content</h2>
+  <div class="project"><h3>37. cash4cams.net</h3><p>Adult webcam affiliate site with blog content and program reviews.</p></div>
+  <div class="project"><h3>38. alanogden.com</h3><p>Your personal website.</p></div>
+  <div class="project"><h3>39. citystgeorge</h3><p>St. George, Utah tourism site covering parks, dining, events, and advertising.</p></div>
+  <div class="project"><h3>40. Gaming Content Engine</h3><p>Gaming-news RSS ingestion, X posting, and weekly newsletter automation.</p></div>
+  <div class="project"><h3>41. Gaming X Poster and Gaming Bot</h3><p>Supporting tools for gaming-news social posting.</p></div>
+  <div class="project"><h3>42. games.oggiedoggie.net</h3><p>Larger games portal and repository containing several individual game projects.</p></div>
+
+  <h2>Games</h2>
+  <div class="project"><h3>43. Last City Museum</h3><p>Destiny-history fan museum browser game with collectibles and mini-games.</p></div>
+  <div class="project"><h3>44. Last City Museum 1P</h3><p>First-person raycasting version with NPCs, dialogue, objectives, timeline hallway, and collectibles.</p></div>
+  <div class="project"><h3>45. DiceTavern</h3><p>Fantasy tavern dice-combat game.</p></div>
+  <div class="project"><h3>46. Emberwild: Elemental Duel</h3><p>Elemental card game with a 54-card deck and AI opponent.</p></div>
+  <div class="project"><h3>47. Acey-Deucey</h3><p>Navy backgammon variant for the browser and Linux desktop, with a tested rules engine and persistent bankroll.</p></div>
+  <div class="project"><h3>48. Grimhand: The Endless Deck</h3><p>Fantasy dungeon crawler and card game with secrets, rumors, stamina combat, and persistent-world elements.</p></div>
+  <div class="project"><h3>49. Oggie's Blackjack Table</h3><p>Dependency-free blackjack game with passing tests and a private GitHub repository.</p></div>
+  <div class="project"><h3>50. Crossword Math</h3><p>Android arithmetic-crossword game. Core milestones, 38 unit tests, and emulator smoke testing were complete. A signed release and Samsung-device testing remained.</p></div>
+  <div class="project"><h3>51. Dinosaur and Unicorn Coloring Apps</h3><p>Older Cordova-style mobile and web projects still present locally.</p></div>
+
+  <h2>Other apps and utilities</h2>
+  <div class="project"><h3>52. Oggie's Local Send</h3><p>Rust and GTK LAN file-sharing app with QR codes. Core, HTTP server, service layer, UI, and 56 tests were complete. Phone smoke testing and packaging remained.</p></div>
+  <div class="project"><h3>53. AppImage Manager</h3><p>Linux AppImage-management application.</p></div>
+  <div class="project"><h3>54. ImageConvert</h3><p>Image-conversion utility with scripts and packaging work.</p></div>
+  <div class="project"><h3>55. YouTube-to-Facebook and yt2fb</h3><p>Older YouTube-to-Facebook repurposing or publishing project.</p></div>
+  <div class="project"><h3>56. Thumbnail Pipeline</h3><p>Local thumbnail-generation workflow.</p></div>
+  <div class="project"><h3>57. Filler Cut</h3><p>Likely video-editing automation. Present locally but not sufficiently documented.</p></div>
+  <div class="project"><h3>58. ComfyUI Validator and Wiring Validator</h3><p>Tools for validating ComfyUI setups or workflow wiring.</p></div>
+  <div class="project"><h3>59. MedCheck</h3><p>Local project whose scope is not documented clearly in the main ledger.</p></div>
+  <div class="project"><h3>60. Pip-Boy, Ovid, SGF26, Morning Intel, Productivity, and homelab helpers <span class="tag uncertain">NEEDS REVIEW</span></h3><p>These folders exist locally, but there is not enough durable project memory to describe them confidently.</p></div>
+
+  <h2>Suggested restart order</h2>
+  <ol>
+    <li>Resume and finish the interrupted Mission Control integrations.</li>
+    <li>Restore Gmail connectivity and finish Operations Briefing.</li>
+    <li>Continue the UFO dashboard and publishing toolchain.</li>
+    <li>Finish one nearly shippable standalone project, preferably Crossword Math or Oggie's Local Send.</li>
+    <li>Use Ops Action Queue and Project Action Reconciler to turn everything else into a manageable backlog.</li>
+  </ol>
+
+  <p class="footer">Sources: AgentOS project ledger and project-memory files, local project directories, and Mission Control Git history and worktree. Status labels can drift when project records are not updated, so this document separates explicit active status from inferred recent work.</p>
+</body>
+</html>

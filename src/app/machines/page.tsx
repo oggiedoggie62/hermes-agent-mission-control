@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Server, Cpu, HardDrive, Thermometer, Activity, Monitor, Globe, Wifi } from "lucide-react";
+import { Server, Cpu, HardDrive, Thermometer, Activity, Monitor, Globe, Wifi, AlertTriangle } from "lucide-react";
 
 interface HostHealth {
   hostname: string;
@@ -35,20 +35,41 @@ interface RegistryService {
   notes: string;
 }
 
+interface GuardianStatus {
+  hostname: string;
+  status: string;
+  lastProbed?: string;
+  summary?: string;
+  tailscale?: string;
+  recovery?: {
+    attempted?: boolean;
+    status?: string;
+    message?: string;
+    lan_host?: string;
+  };
+}
+
 export default function MachinesPage() {
   const [hosts, setHosts] = useState<HostHealth[]>([]);
   const [devices, setDevices] = useState<RegistryDevice[]>([]);
   const [services, setServices] = useState<RegistryService[]>([]);
+  const [guardian, setGuardian] = useState<GuardianStatus | null>(null);
 
   useEffect(() => {
     fetch("/api/host/health")
       .then((res) => res.json())
       .then((data) => setHosts(data.hosts || []))
       .catch(console.error);
+    const fetchGuardian = () => fetch("/api/guardian/status")
+      .then((res) => res.json())
+      .then((data) => setGuardian(data.status || null))
+      .catch(console.error);
+    fetchGuardian();
     const interval = setInterval(() => {
       fetch("/api/host/health")
         .then((res) => res.json())
         .then((data) => setHosts(data.hosts || []));
+      fetchGuardian();
     }, 10000);
 
     // Fetch registry data once
@@ -71,6 +92,29 @@ export default function MachinesPage() {
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {guardian && (
+          <div className={`panel p-6 flex flex-col gap-5 border ${guardian.status === "online" ? "border-emerald-500/30" : "border-amber-500/40"}`}>
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-xl grid place-items-center ${guardian.status === "online" ? "bg-emerald-500/20 text-emerald-400" : "bg-amber-500/20 text-amber-400"}`}>
+                {guardian.status === "online" ? <Wifi className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
+              </div>
+              <div>
+                <h3 className="font-bold text-lg">Mac Mini Guardian</h3>
+                <div className={`text-[11px] uppercase tracking-wider font-semibold ${guardian.status === "online" ? "text-emerald-400" : "text-amber-400"}`}>
+                  {guardian.status === "online" ? "Mac Mini Online" : guardian.recovery?.status === "succeeded" ? "Recovery Started" : "Manual Intervention Required"}
+                </div>
+              </div>
+            </div>
+            <div className="space-y-2 text-[12px]">
+              <div><span className="text-[var(--ink-3)]">Tailscale:</span> {guardian.tailscale || "unknown"}</div>
+              <div><span className="text-[var(--ink-3)]">Recovery:</span> {guardian.recovery?.message || "No recovery attempted"}</div>
+              {guardian.summary && <div className="text-[var(--ink-2)] leading-relaxed">{guardian.summary}</div>}
+            </div>
+            <div className="pt-3 border-t border-[var(--line)] text-[11px] text-[var(--ink-2)]">
+              Last probe: {guardian.lastProbed ? new Date(guardian.lastProbed).toLocaleString() : "unknown"}
+            </div>
+          </div>
+        )}
         {hosts.map((host) => (
           <div key={host.hostname} className="panel p-6 flex flex-col gap-6 group">
             <div className="flex items-center justify-between">

@@ -140,6 +140,66 @@ export function OperationsSummaryPanel({
         )}
       </div>
 
+      {/* UFO publication gate */}
+      <div className="mb-5">
+        <div className="text-[10px] font-black tracking-widest text-slate-400 uppercase mb-2">
+          UFO publication gate
+        </div>
+        {summary.ufoReadiness.available && summary.ufoReadiness.value ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/5 bg-black/20 px-3 py-3">
+            <div>
+              <div className={`text-[13px] font-black ${
+                summary.ufoReadiness.value.decision === "PASS"
+                  ? "text-emerald-400"
+                  : summary.ufoReadiness.value.decision === "WARN"
+                    ? "text-amber-400"
+                    : "text-rose-400"
+              }`}>
+                {summary.ufoReadiness.value.decision}
+              </div>
+              <div className="text-[11px] text-slate-400">
+                Publication {summary.ufoReadiness.value.publicationAllowed ? "allowed" : "blocked"}
+              </div>
+            </div>
+            <div className="max-w-xl text-[11px] text-slate-300">
+              {summary.ufoReadiness.value.recommendedAction}
+            </div>
+            <div className="text-[10px] text-slate-500 font-mono">
+              {new Date(summary.ufoReadiness.value.generatedAt).toLocaleString()}
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-rose-500/25 bg-rose-500/10 px-3 py-3 text-[12px] font-semibold text-rose-300">
+            UFO readiness contract unavailable
+          </div>
+        )}
+      </div>
+
+      {/* Ops Action Queue */}
+      <div className="mb-5">
+        <div className="text-[10px] font-black tracking-widest text-slate-400 uppercase mb-2">
+          Ops Action Queue
+        </div>
+        {summary.opsActionQueue.available && summary.opsActionQueue.value ? (
+          <div className="rounded-xl border border-white/5 bg-black/20 px-3 py-3">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              <Stat icon={<ListTodo className="w-3 h-3" />} label="Open" value={summary.opsActionQueue.value.open} tone="cyan" />
+              <Stat icon={<XCircle className="w-3 h-3" />} label="P0" value={summary.opsActionQueue.value.byPriority.P0} tone="rose" />
+              <Stat icon={<AlertTriangle className="w-3 h-3" />} label="P1" value={summary.opsActionQueue.value.byPriority.P1} tone="amber" />
+              <Stat icon={<Circle className="w-3 h-3" />} label="P2 / P3" value={summary.opsActionQueue.value.byPriority.P2 + summary.opsActionQueue.value.byPriority.P3} tone="slate" />
+              <Stat icon={<CheckCircle2 className="w-3 h-3" />} label="Acknowledged" value={summary.opsActionQueue.value.acknowledged} tone="emerald" />
+            </div>
+            <div className="mt-2 text-right text-[10px] text-slate-500 font-mono">
+              generated {new Date(summary.opsActionQueue.value.generatedAt).toLocaleString()}
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-rose-500/25 bg-rose-500/10 px-3 py-3 text-[12px] font-semibold text-rose-300">
+            Ops Action Queue contract unavailable
+          </div>
+        )}
+      </div>
+
       {/* Mission status */}
       <div className="mb-5">
         <div className="text-[10px] font-black tracking-widest text-slate-400 uppercase mb-2">

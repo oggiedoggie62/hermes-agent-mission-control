@@ -26,6 +26,21 @@ function dependencies(overrides: Record<string, unknown> = {}) {
   return {
     readAgentState: async () => [],
     readHostHealth: async () => [],
+    readUfoReadiness: async () => ({
+      generatedAt: "2026-07-20T00:00:00Z",
+      decision: "PASS" as const,
+      publicationAllowed: true,
+      publicationBlockers: [],
+      warnings: [],
+      recommendedAction: "Ready.",
+    }),
+    readOpsActionQueue: async () => ({
+      generatedAt: "2026-07-20T00:00:00Z",
+      open: 0,
+      acknowledged: 0,
+      byPriority: { P0: 0, P1: 0, P2: 0, P3: 0 },
+      actions: [],
+    }),
     readMissions: async () => [],
     readPendingIdeas: async () => 0,
     probePostgres: async (): Promise<ServiceHealth> => "up",
@@ -131,6 +146,58 @@ async function main() {
   assert.deepEqual(healthy.pendingIdeas, { available: true, value: 0 });
   assert.equal(healthy.attention.length, 0);
   console.log("PASS successful zero remains authoritative data");
+
+  const blockedUfo = await getOperationsSummary(dependencies({
+    readUfoReadiness: async () => ({
+      generatedAt: "2026-07-29T14:00:00Z",
+      decision: "BLOCK" as const,
+      publicationAllowed: false,
+      publicationBlockers: ["Gather health state is failed, not healthy."],
+      warnings: [],
+      recommendedAction: "Resolve blockers before building or deploying.",
+    }),
+  }));
+  assert.equal(blockedUfo.ufoReadiness.value?.publicationAllowed, false);
+  assert(blockedUfo.attention.some((item) =>
+    item.id === "ufo-publication-blocked"
+      && item.label.includes("Gather health state is failed"),
+  ));
+  console.log("PASS UFO BLOCK contract is visible and actionable");
+
+  const ufoUnavailable = await getOperationsSummary(dependencies({
+    readUfoReadiness: async () => {
+      throw new Error("missing");
+    },
+  }));
+  assert.equal(ufoUnavailable.ufoReadiness.available, false);
+  assert(ufoUnavailable.attention.some((item) => item.id === "data-ufo-readiness"));
+  console.log("PASS missing UFO contract fails visibly");
+
+  const actionQueue = await getOperationsSummary(dependencies({
+    readOpsActionQueue: async () => ({
+      generatedAt: "2026-08-04T14:00:00Z",
+      open: 4,
+      acknowledged: 1,
+      byPriority: { P0: 1, P1: 1, P2: 2, P3: 0 },
+      actions: [
+        { id: "urgent", priority: "P0" as const, title: "Core service down", status: "open" as const, acknowledgedAt: null, handsOff: false },
+        { id: "seen", priority: "P1" as const, title: "Known outage", status: "open" as const, acknowledgedAt: "2026-08-04T14:01:00Z", handsOff: false },
+        { id: "mac", priority: "P2" as const, title: "Mac Mini unavailable", status: "open" as const, acknowledgedAt: null, handsOff: true },
+      ],
+    }),
+  }));
+  assert.equal(actionQueue.opsActionQueue.value?.open, 4);
+  assert(actionQueue.attention.some((item) => item.id === "ops-urgent" && item.severity === "critical"));
+  assert(!actionQueue.attention.some((item) => item.id === "ops-seen"));
+  assert(!actionQueue.attention.some((item) => item.id === "ops-mac"));
+  console.log("PASS Ops Action Queue exposes counts and promotes only unacknowledged P0/P1 actions");
+
+  const actionQueueUnavailable = await getOperationsSummary(dependencies({
+    readOpsActionQueue: async () => { throw new Error("missing"); },
+  }));
+  assert.equal(actionQueueUnavailable.opsActionQueue.available, false);
+  assert(actionQueueUnavailable.attention.some((item) => item.id === "data-ops-action-queue"));
+  console.log("PASS missing Ops Action Queue contract fails visibly");
 
   const now = Date.UTC(2026, 6, 20);
   const missionSemantics = await getOperationsSummary(dependencies({

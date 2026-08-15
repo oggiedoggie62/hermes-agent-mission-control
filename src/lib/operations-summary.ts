@@ -1,5 +1,6 @@
 /* agent: codex | model: gpt-5 | date: 2026-07-21 */
 import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { prisma } from "@/lib/prisma";
 import { getCronJobs, type CronJob } from "@/lib/agentos";
@@ -22,6 +23,32 @@ export interface AttentionItem {
   href: string;
 }
 
+export interface UfoReadiness {
+  generatedAt: string;
+  decision: "PASS" | "WARN" | "BLOCK";
+  publicationAllowed: boolean;
+  publicationBlockers: string[];
+  warnings: string[];
+  recommendedAction: string;
+}
+
+export interface OpsAction {
+  id: string;
+  priority: "P0" | "P1" | "P2" | "P3";
+  title: string;
+  status: "open" | "resolved";
+  acknowledgedAt: string | null;
+  handsOff: boolean;
+}
+
+export interface OpsActionQueue {
+  generatedAt: string;
+  open: number;
+  acknowledged: number;
+  byPriority: Record<OpsAction["priority"], number>;
+  actions: OpsAction[];
+}
+
 interface MissionSummaryRow {
   id: string;
   title: string;
@@ -42,6 +69,8 @@ export interface OperationsSummary {
     totalTasks: number;
   }>;
   hostHealth: Availability<HostHealth[]>;
+  ufoReadiness: Availability<UfoReadiness>;
+  opsActionQueue: Availability<OpsActionQueue>;
   missions: {
     available: boolean;
     queued: number | null;
@@ -69,6 +98,8 @@ export interface OperationsSummary {
 interface OperationsSummaryDependencies {
   readAgentState: () => Promise<AgentState[]>;
   readHostHealth: () => Promise<HostHealth[]>;
+  readUfoReadiness: () => Promise<UfoReadiness>;
+  readOpsActionQueue: () => Promise<OpsActionQueue>;
   readMissions: () => Promise<MissionSummaryRow[]>;
   readPendingIdeas: () => Promise<number>;
   probePostgres: () => Promise<ServiceHealth>;
@@ -138,9 +169,76 @@ export async function probeWebHealth(
   }
 }
 
+export async function readUfoReadiness(
+  path = process.env.UFO_READINESS_PATH
+    ?? "/home/oggie/projects/ufo-readiness-gate/reports/latest.json",
+): Promise<UfoReadiness> {
+  const value = JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
+  if (!["PASS", "WARN", "BLOCK"].includes(String(value.decision))) {
+    throw new Error("Invalid UFO readiness decision");
+  }
+  if (typeof value.publication_allowed !== "boolean" || typeof value.generated_at !== "string") {
+    throw new Error("Invalid UFO readiness contract");
+  }
+  return {
+    generatedAt: value.generated_at,
+    decision: value.decision as UfoReadiness["decision"],
+    publicationAllowed: value.publication_allowed,
+    publicationBlockers: Array.isArray(value.publication_blockers)
+      ? value.publication_blockers.map(String)
+      : [],
+    warnings: Array.isArray(value.warnings) ? value.warnings.map(String) : [],
+    recommendedAction: typeof value.recommended_action === "string"
+      ? value.recommended_action
+      : "Review the UFO readiness report.",
+  };
+}
+
+export async function readOpsActionQueue(
+  path = process.env.OPS_ACTION_QUEUE_PATH
+    ?? "/home/oggie/projects/ops-action-queue/reports/latest.json",
+): Promise<OpsActionQueue> {
+  const value = JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
+  const summary = value.summary as Record<string, unknown> | undefined;
+  const priorities = summary?.by_priority as Record<string, unknown> | undefined;
+  if (typeof value.generated_at !== "string" || !summary || !priorities || !Array.isArray(value.actions)) {
+    throw new Error("Invalid Ops Action Queue contract");
+  }
+  const priorityNames = ["P0", "P1", "P2", "P3"] as const;
+  if (typeof summary.open !== "number" || typeof summary.acknowledged !== "number"
+    || priorityNames.some((priority) => typeof priorities[priority] !== "number")) {
+    throw new Error("Invalid Ops Action Queue summary");
+  }
+  const actions = value.actions.map((item) => {
+    const action = item as Record<string, unknown>;
+    if (typeof action.id !== "string" || typeof action.title !== "string"
+      || !priorityNames.includes(action.priority as OpsAction["priority"])
+      || !["open", "resolved"].includes(String(action.status))) {
+      throw new Error("Invalid Ops Action Queue action");
+    }
+    return {
+      id: action.id,
+      priority: action.priority as OpsAction["priority"],
+      title: action.title,
+      status: action.status as OpsAction["status"],
+      acknowledgedAt: typeof action.acknowledged_at === "string" ? action.acknowledged_at : null,
+      handsOff: action.hands_off === true,
+    };
+  });
+  return {
+    generatedAt: value.generated_at,
+    open: summary.open,
+    acknowledged: summary.acknowledged,
+    byPriority: Object.fromEntries(priorityNames.map((priority) => [priority, priorities[priority]])) as OpsActionQueue["byPriority"],
+    actions,
+  };
+}
+
 const defaultDependencies: OperationsSummaryDependencies = {
   readAgentState: () => prisma.agentState.findMany({ orderBy: { updatedAt: "desc" } }),
   readHostHealth: () => prisma.hostHealth.findMany({ orderBy: { updatedAt: "desc" } }),
+  readUfoReadiness,
+  readOpsActionQueue,
   readMissions: () =>
     prisma.mission.findMany({
       where: { isArchived: false },
@@ -190,7 +288,7 @@ export async function getOperationsSummary(
   overrides: Partial<OperationsSummaryDependencies> = {},
 ): Promise<OperationsSummary> {
   const dependencies = { ...defaultDependencies, ...overrides };
-  const [agentResult, hostResult, missionResult, ideaResult, postgres, dispatcher, web, cronResult] = await Promise.all([
+  const [agentResult, hostResult, ufoResult, actionResult, missionResult, ideaResult, postgres, dispatcher, web, cronResult] = await Promise.all([
     dependencies.readAgentState().then(
       (agents) => ({
         available: true as const,
@@ -204,6 +302,14 @@ export async function getOperationsSummary(
       () => ({ available: false as const, value: null }),
     ),
     dependencies.readHostHealth().then(
+      (value) => ({ available: true as const, value }),
+      () => ({ available: false as const, value: null }),
+    ),
+    dependencies.readUfoReadiness().then(
+      (value) => ({ available: true as const, value }),
+      () => ({ available: false as const, value: null }),
+    ),
+    dependencies.readOpsActionQueue().then(
       (value) => ({ available: true as const, value }),
       () => ({ available: false as const, value: null }),
     ),
@@ -236,6 +342,38 @@ export async function getOperationsSummary(
   }
   if (!hostResult.available) {
     attention.unshift({ id: "data-host-health", severity: "critical", label: "Host health data is unavailable", href: "/machines" });
+  }
+  if (!ufoResult.available) {
+    attention.unshift({ id: "data-ufo-readiness", severity: "critical", label: "UFO readiness data is unavailable", href: "/" });
+  } else if (ufoResult.value.decision === "BLOCK") {
+    attention.unshift({
+      id: "ufo-publication-blocked",
+      severity: "critical",
+      label: `UFO publication blocked: ${ufoResult.value.publicationBlockers[0] ?? ufoResult.value.recommendedAction}`,
+      href: "/",
+    });
+  } else if (ufoResult.value.decision === "WARN") {
+    attention.push({
+      id: "ufo-readiness-warning",
+      severity: "warning",
+      label: `UFO readiness warning: ${ufoResult.value.warnings[0] ?? ufoResult.value.recommendedAction}`,
+      href: "/",
+    });
+  }
+
+  if (!actionResult.available) {
+    attention.unshift({ id: "data-ops-action-queue", severity: "critical", label: "Ops Action Queue data is unavailable", href: "/" });
+  } else {
+    for (const action of actionResult.value.actions.filter((item) =>
+      item.status === "open" && item.acknowledgedAt === null && (item.priority === "P0" || item.priority === "P1")
+    )) {
+      attention.unshift({
+        id: `ops-${action.id}`,
+        severity: action.priority === "P0" ? "critical" : "warning",
+        label: `${action.priority}: ${action.title}${action.handsOff ? " (hands-off)" : ""}`,
+        href: "/",
+      });
+    }
   }
 
   if (missionResult.available) {
@@ -295,6 +433,8 @@ export async function getOperationsSummary(
   return {
     agentState: agentResult,
     hostHealth: hostResult,
+    ufoReadiness: ufoResult,
+    opsActionQueue: actionResult,
     missions: {
       available: missionResult.available,
       queued: missionResult.available ? queued : null,

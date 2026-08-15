@@ -1,0 +1,31 @@
+{
+  "generated_at": "2026-08-04T08:00:00-06:00",
+  "summary": {
+    "open": 1,
+    "acknowledged": 1,
+    "by_priority": {
+      "P0": 1,
+      "P1": 1,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "actions": [
+    {
+      "id": "critical-service",
+      "priority": "P0",
+      "title": "Investigate critical service",
+      "status": "open",
+      "acknowledged_at": null,
+      "hands_off": false
+    },
+    {
+      "id": "known-outage",
+      "priority": "P1",
+      "title": "Known outage",
+      "status": "acknowledged",
+      "acknowledged_at": "2026-08-04T08:05:00-06:00",
+      "hands_off": true
+    }
+  ]
+}

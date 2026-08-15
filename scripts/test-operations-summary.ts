@@ -1,10 +1,15 @@
 /* agent: codex | model: gpt-5 | date: 2026-07-21 */
 import assert from "node:assert/strict";
+import path from "node:path";
 import {
   classifySystemdActiveState,
   getOperationsSummary,
+  OPS_ACTION_QUEUE_MAX_AGE_MS,
   probeDispatcherHealth,
   probeWebHealth,
+  readOpsActionQueue,
+  readUfoReadiness,
+  UFO_READINESS_MAX_AGE_MS,
   type ServiceHealth,
 } from "../src/lib/operations-summary";
 import type { CronJob } from "../src/lib/agentos";
@@ -21,6 +26,14 @@ const disabledWorker: CronJob = {
   last_error: null,
   deliver: null,
 };
+
+const fixturePath = (name: string) => path.join(
+  process.cwd(),
+  "scripts",
+  "fixtures",
+  "operations-summary",
+  name,
+);
 
 function dependencies(overrides: Record<string, unknown> = {}) {
   return {
@@ -61,6 +74,52 @@ async function assertAttention(
 }
 
 async function main() {
+  const contractNow = Date.parse("2026-08-05T08:00:00-06:00");
+  const validUfo = await readUfoReadiness(fixturePath("ufo-valid.json"), {
+    now: () => contractNow,
+  });
+  assert.equal(validUfo.decision, "WARN");
+  assert.equal(validUfo.publicationAllowed, true);
+  await assert.rejects(
+    readUfoReadiness(fixturePath("ufo-valid.json"), {
+      now: () => Date.parse("2026-08-05T20:15:00.001-06:00"),
+    }),
+    /stale/,
+  );
+  await assert.rejects(
+    readUfoReadiness(fixturePath("ufo-invalid-timestamp.json"), { now: () => contractNow }),
+    /ISO 8601 timestamp/,
+  );
+  await assert.rejects(
+    readUfoReadiness(fixturePath("ufo-invalid-schema.json"), { now: () => contractNow }),
+    /Invalid UFO readiness contract/,
+  );
+  assert.equal(UFO_READINESS_MAX_AGE_MS, 36 * 60 * 60 * 1000);
+  console.log("PASS actual UFO reader accepts fresh fixtures and rejects stale, invalid timestamp, and invalid schema fixtures");
+
+  const validOps = await readOpsActionQueue(fixturePath("ops-valid.json"), {
+    now: () => contractNow,
+  });
+  assert.equal(validOps.open, 1);
+  assert.equal(validOps.acknowledged, 1);
+  assert.equal(validOps.actions[1]?.status, "acknowledged");
+  await assert.rejects(
+    readOpsActionQueue(fixturePath("ops-valid.json"), {
+      now: () => Date.parse("2026-08-05T20:00:00.001-06:00"),
+    }),
+    /stale/,
+  );
+  await assert.rejects(
+    readOpsActionQueue(fixturePath("ops-invalid-timestamp.json"), { now: () => contractNow }),
+    /ISO 8601 timestamp/,
+  );
+  await assert.rejects(
+    readOpsActionQueue(fixturePath("ops-invalid-schema.json"), { now: () => contractNow }),
+    /summary does not match its actions/,
+  );
+  assert.equal(OPS_ACTION_QUEUE_MAX_AGE_MS, 36 * 60 * 60 * 1000);
+  console.log("PASS actual Ops Action Queue reader accepts fresh fixtures and rejects stale, invalid timestamp, and inconsistent schema fixtures");
+
   assert.equal(classifySystemdActiveState("active\n"), "up");
   assert.equal(classifySystemdActiveState("inactive\n"), "down");
   assert.equal(classifySystemdActiveState("failed\n"), "down");

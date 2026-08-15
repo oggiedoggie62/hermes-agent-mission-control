@@ -170,7 +170,7 @@ export function OperationsSummaryPanel({
           </div>
         ) : (
           <div className="rounded-xl border border-rose-500/25 bg-rose-500/10 px-3 py-3 text-[12px] font-semibold text-rose-300">
-            UFO readiness contract unavailable
+            UFO readiness contract unavailable, invalid, or stale
           </div>
         )}
       </div>
@@ -195,7 +195,7 @@ export function OperationsSummaryPanel({
           </div>
         ) : (
           <div className="rounded-xl border border-rose-500/25 bg-rose-500/10 px-3 py-3 text-[12px] font-semibold text-rose-300">
-            Ops Action Queue contract unavailable
+            Ops Action Queue contract unavailable, invalid, or stale
           </div>
         )}
       </div>

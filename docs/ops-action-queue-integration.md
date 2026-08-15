@@ -4,6 +4,10 @@ Mission Control reads `/home/oggie/projects/ops-action-queue/reports/latest.json
 directly. Set `OPS_ACTION_QUEUE_PATH` to override that location. The reader
 validates timestamps, summary counts, priorities, and action fields. Missing or
 malformed data is shown as an operational error instead of zero healthy actions.
+The artifact remains authoritative for 36 hours after `generated_at`, matching
+its daily refresh cadence. Timestamps must be valid ISO 8601 values with an
+explicit timezone, with five minutes of future clock skew tolerated. Stale or
+future-dated artifacts are shown as non-authoritative rather than current state.
 
 The dashboard displays open totals, priority counts, and acknowledgements.
 Unacknowledged open P0 and P1 actions also appear in the main attention list.

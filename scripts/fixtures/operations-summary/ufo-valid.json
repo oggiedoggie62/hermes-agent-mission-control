@@ -1,0 +1,8 @@
+{
+  "generated_at": "2026-08-04T08:15:00-06:00",
+  "decision": "WARN",
+  "publication_allowed": true,
+  "publication_blockers": [],
+  "warnings": ["One official source is degraded."],
+  "recommended_action": "Review degraded sources before publication."
+}

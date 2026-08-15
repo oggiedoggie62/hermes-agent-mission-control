@@ -1,0 +1,23 @@
+{
+  "generated_at": "2026-08-04T08:00:00-06:00",
+  "summary": {
+    "open": 2,
+    "acknowledged": 0,
+    "by_priority": {
+      "P0": 1,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "actions": [
+    {
+      "id": "critical-service",
+      "priority": "P0",
+      "title": "Investigate critical service",
+      "status": "open",
+      "acknowledged_at": null,
+      "hands_off": false
+    }
+  ]
+}

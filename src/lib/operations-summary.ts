@@ -9,6 +9,9 @@ import type { AgentState, HostHealth } from "@prisma/client";
 const execFileAsync = promisify(execFile);
 
 export const STALLED_WARNING_MS = 45 * 60 * 1000;
+export const UFO_READINESS_MAX_AGE_MS = 36 * 60 * 60 * 1000;
+export const OPS_ACTION_QUEUE_MAX_AGE_MS = 36 * 60 * 60 * 1000;
+const CONTRACT_FUTURE_SKEW_MS = 5 * 60 * 1000;
 export type ServiceHealth = "up" | "down" | "unknown";
 
 export interface Availability<T> {
@@ -36,7 +39,7 @@ export interface OpsAction {
   id: string;
   priority: "P0" | "P1" | "P2" | "P3";
   title: string;
-  status: "open" | "resolved";
+  status: "open" | "acknowledged" | "resolved";
   acknowledgedAt: string | null;
   handsOff: boolean;
 }
@@ -47,6 +50,11 @@ export interface OpsActionQueue {
   acknowledged: number;
   byPriority: Record<OpsAction["priority"], number>;
   actions: OpsAction[];
+}
+
+interface ContractReadOptions {
+  now?: () => number;
+  maxAgeMs?: number;
 }
 
 interface MissionSummaryRow {
@@ -169,67 +177,161 @@ export async function probeWebHealth(
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseTimestamp(value: unknown, label: string): number {
+  if (typeof value !== "string"
+    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) {
+    throw new Error(`${label} must be an ISO 8601 timestamp with a timezone`);
+  }
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    throw new Error(`${label} is not a valid timestamp`);
+  }
+  return timestamp;
+}
+
+function requireFreshTimestamp(
+  value: unknown,
+  label: string,
+  now: number,
+  maxAgeMs: number,
+): string {
+  const timestamp = parseTimestamp(value, label);
+  const age = now - timestamp;
+  if (age < -CONTRACT_FUTURE_SKEW_MS) {
+    throw new Error(`${label} is too far in the future`);
+  }
+  if (age > maxAgeMs) {
+    throw new Error(`${label} is stale`);
+  }
+  return value as string;
+}
+
+function requireStringArray(value: unknown, label: string): string[] {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new Error(`${label} must be an array of strings`);
+  }
+  return value;
+}
+
+function requireNonNegativeInteger(value: unknown, label: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative integer`);
+  }
+  return value;
+}
+
 export async function readUfoReadiness(
   path = process.env.UFO_READINESS_PATH
     ?? "/home/oggie/projects/ufo-readiness-gate/reports/latest.json",
+  options: ContractReadOptions = {},
 ): Promise<UfoReadiness> {
-  const value = JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
+  const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
+  if (!isRecord(parsed)) {
+    throw new Error("Invalid UFO readiness contract");
+  }
+  const value = parsed;
+  const generatedAt = requireFreshTimestamp(
+    value.generated_at,
+    "UFO readiness generated_at",
+    (options.now ?? Date.now)(),
+    options.maxAgeMs ?? UFO_READINESS_MAX_AGE_MS,
+  );
   if (!["PASS", "WARN", "BLOCK"].includes(String(value.decision))) {
     throw new Error("Invalid UFO readiness decision");
   }
-  if (typeof value.publication_allowed !== "boolean" || typeof value.generated_at !== "string") {
+  if (typeof value.publication_allowed !== "boolean"
+    || typeof value.recommended_action !== "string"
+    || value.recommended_action.trim() === "") {
     throw new Error("Invalid UFO readiness contract");
   }
+  const publicationBlockers = requireStringArray(
+    value.publication_blockers,
+    "UFO readiness publication_blockers",
+  );
+  const warnings = requireStringArray(value.warnings, "UFO readiness warnings");
   return {
-    generatedAt: value.generated_at,
+    generatedAt,
     decision: value.decision as UfoReadiness["decision"],
     publicationAllowed: value.publication_allowed,
-    publicationBlockers: Array.isArray(value.publication_blockers)
-      ? value.publication_blockers.map(String)
-      : [],
-    warnings: Array.isArray(value.warnings) ? value.warnings.map(String) : [],
-    recommendedAction: typeof value.recommended_action === "string"
-      ? value.recommended_action
-      : "Review the UFO readiness report.",
+    publicationBlockers,
+    warnings,
+    recommendedAction: value.recommended_action,
   };
 }
 
 export async function readOpsActionQueue(
   path = process.env.OPS_ACTION_QUEUE_PATH
     ?? "/home/oggie/projects/ops-action-queue/reports/latest.json",
+  options: ContractReadOptions = {},
 ): Promise<OpsActionQueue> {
-  const value = JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
-  const summary = value.summary as Record<string, unknown> | undefined;
-  const priorities = summary?.by_priority as Record<string, unknown> | undefined;
-  if (typeof value.generated_at !== "string" || !summary || !priorities || !Array.isArray(value.actions)) {
+  const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
+  if (!isRecord(parsed)) {
     throw new Error("Invalid Ops Action Queue contract");
   }
-  const priorityNames = ["P0", "P1", "P2", "P3"] as const;
-  if (typeof summary.open !== "number" || typeof summary.acknowledged !== "number"
-    || priorityNames.some((priority) => typeof priorities[priority] !== "number")) {
-    throw new Error("Invalid Ops Action Queue summary");
+  const value = parsed;
+  const summaryValue = value.summary;
+  const actionsValue = value.actions;
+  if (!isRecord(summaryValue) || !isRecord(summaryValue.by_priority)
+    || !Array.isArray(actionsValue)) {
+    throw new Error("Invalid Ops Action Queue contract");
   }
-  const actions = value.actions.map((item) => {
-    const action = item as Record<string, unknown>;
-    if (typeof action.id !== "string" || typeof action.title !== "string"
+  const summary = summaryValue;
+  const priorities = summaryValue.by_priority;
+  const generatedAt = requireFreshTimestamp(
+    value.generated_at,
+    "Ops Action Queue generated_at",
+    (options.now ?? Date.now)(),
+    options.maxAgeMs ?? OPS_ACTION_QUEUE_MAX_AGE_MS,
+  );
+  const priorityNames = ["P0", "P1", "P2", "P3"] as const;
+  const open = requireNonNegativeInteger(summary.open, "Ops Action Queue open count");
+  const acknowledged = requireNonNegativeInteger(
+    summary.acknowledged,
+    "Ops Action Queue acknowledged count",
+  );
+  const byPriority = Object.fromEntries(priorityNames.map((priority) => [
+    priority,
+    requireNonNegativeInteger(priorities[priority], `Ops Action Queue ${priority} count`),
+  ])) as OpsActionQueue["byPriority"];
+  const actions: OpsAction[] = actionsValue.map((item: unknown) => {
+    if (!isRecord(item)) throw new Error("Invalid Ops Action Queue action");
+    const action = item;
+    if (typeof action.id !== "string" || action.id.trim() === ""
+      || typeof action.title !== "string" || action.title.trim() === ""
       || !priorityNames.includes(action.priority as OpsAction["priority"])
-      || !["open", "resolved"].includes(String(action.status))) {
+      || !["open", "acknowledged", "resolved"].includes(String(action.status))
+      || typeof action.hands_off !== "boolean"
+      || (action.acknowledged_at !== null && typeof action.acknowledged_at !== "string")) {
       throw new Error("Invalid Ops Action Queue action");
+    }
+    if (typeof action.acknowledged_at === "string") {
+      parseTimestamp(action.acknowledged_at, `Ops Action Queue action ${action.id} acknowledged_at`);
     }
     return {
       id: action.id,
       priority: action.priority as OpsAction["priority"],
       title: action.title,
       status: action.status as OpsAction["status"],
-      acknowledgedAt: typeof action.acknowledged_at === "string" ? action.acknowledged_at : null,
-      handsOff: action.hands_off === true,
+      acknowledgedAt: action.acknowledged_at as string | null,
+      handsOff: action.hands_off,
     };
   });
+  if (new Set(actions.map((action) => action.id)).size !== actions.length
+    || open !== actions.filter((action) => action.status === "open").length
+    || acknowledged !== actions.filter((action) => action.status === "acknowledged").length
+    || priorityNames.some((priority) =>
+      byPriority[priority] !== actions.filter((action) => action.priority === priority).length)) {
+    throw new Error("Ops Action Queue summary does not match its actions");
+  }
   return {
-    generatedAt: value.generated_at,
-    open: summary.open,
-    acknowledged: summary.acknowledged,
-    byPriority: Object.fromEntries(priorityNames.map((priority) => [priority, priorities[priority]])) as OpsActionQueue["byPriority"],
+    generatedAt,
+    open,
+    acknowledged,
+    byPriority,
     actions,
   };
 }
@@ -344,7 +446,7 @@ export async function getOperationsSummary(
     attention.unshift({ id: "data-host-health", severity: "critical", label: "Host health data is unavailable", href: "/machines" });
   }
   if (!ufoResult.available) {
-    attention.unshift({ id: "data-ufo-readiness", severity: "critical", label: "UFO readiness data is unavailable", href: "/" });
+    attention.unshift({ id: "data-ufo-readiness", severity: "critical", label: "UFO readiness data is unavailable, invalid, or stale", href: "/" });
   } else if (ufoResult.value.decision === "BLOCK") {
     attention.unshift({
       id: "ufo-publication-blocked",
@@ -362,7 +464,7 @@ export async function getOperationsSummary(
   }
 
   if (!actionResult.available) {
-    attention.unshift({ id: "data-ops-action-queue", severity: "critical", label: "Ops Action Queue data is unavailable", href: "/" });
+    attention.unshift({ id: "data-ops-action-queue", severity: "critical", label: "Ops Action Queue data is unavailable, invalid, or stale", href: "/" });
   } else {
     for (const action of actionResult.value.actions.filter((item) =>
       item.status === "open" && item.acknowledgedAt === null && (item.priority === "P0" || item.priority === "P1")

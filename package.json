@@ -16,6 +16,7 @@
     "test:pending-missions": "tsx scripts/test-pending-mission-management.ts",
     "test:idea-edit": "tsx scripts/test-idea-edit.ts",
     "test:operations-summary": "tsx scripts/test-operations-summary.ts",
+    "test:guardian-integration": "tsx scripts/test-guardian-integration.ts",
     "lint": "eslint",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",

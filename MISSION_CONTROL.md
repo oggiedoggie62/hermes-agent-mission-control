@@ -61,7 +61,7 @@ The shell uses a fixed-width desktop sidebar and `min-w-0` content containment t
 - `/ideas` provides one-field Quick Capture for explicitly typed Ideas and To-Dos, a shared chronological review list, and deliberate Idea-to-To-Do and To-Do-to-Mission promotion actions.
 - `/library` combines indexed generated files with AgentOS documents, decisions, and knowledge.
 - `/library/doc` renders guarded AgentOS Markdown files, including mission debriefs.
-- `/machines` displays registered devices, services, and host-health information.
+- `/machines` displays registered devices, services, host-health information, and explicit fresh, stale, missing, invalid, or unavailable Mac Mini Guardian evidence.
 - `/calendar` reads live Hermes cron job definitions and recent execution status.
 
 Most data-heavy pages are React Server Components. Client Components are used where browser state and direct interaction are required, including the responsive sidebar, mission creation, Kanban/archive actions, active-board review filters, and archive search/filter state. The Missions server page supplies the initial non-archived mission list; `KanbanClient` refreshes its canonical browser-side list from `/api/missions/state` every 20 seconds and whenever the tab becomes visible or the window regains focus. `MissionBoardFilters` controls derived search and filter state. The archive server page fetches the canonical archived mission list once and passes it to `ArchiveClient`.
@@ -71,6 +71,7 @@ Most data-heavy pages are React Server Components. Client Components are used wh
 - `/api/agents/state`: receives and returns live agent heartbeat state.
 - `/api/health`: checks PostgreSQL connectivity.
 - `/api/host/health`: receives and returns machine health reports.
+- `/api/guardian/status`: accepts strictly validated authenticated Mac Mini Guardian reports, persists the latest accepted payload in `DataStore`, and classifies read evidence against a 35-minute freshness boundary.
 - `/api/missions`: creates missions and exposes agent choices.
 - `/api/missions/state`: returns current non-archived missions, their latest durable execution attempt, deterministic dispatcher service health, and read-only legacy `mission-worker` last-run, next-run, enabled, and result metadata from the Hermes cron registry.
 - `/api/missions/[id]`: updates mission status, result, debrief path, and archive state.
@@ -93,7 +94,7 @@ Prisma defines these PostgreSQL models:
 - `Idea`: manually or automatically captured Ideas and To-Dos, distinguished by the required `CaptureType` enum (`idea` or `todo`), plus review state, immutable creation timestamp, and automatic modification timestamp. Existing records were safely backfilled as `idea` through the field default.
 - `HostHealth`: CPU, memory, disk, GPU temperature, and NAS status by hostname.
 - `GeneratedFile`: indexed metadata and optional content for generated files.
-- `DataStore`: generic JSON-backed extension storage.
+- `DataStore`: generic JSON-backed extension storage, including the latest validated Mac Mini Guardian status under `mac-mini-guardian-status`.
 
 Mission archival is an explicit state transition, not a deletion. A mission remains in PostgreSQL, must be completed, and appears in the archive only when `isArchived` is true. Debriefs are stored as relative AgentOS paths on the mission record; the actual Markdown remains in AgentOS and is opened through `/library/doc`.
 
@@ -109,6 +110,12 @@ Important filesystem decisions:
 - AgentOS remains readable without importing its contents into PostgreSQL unless queryable mutable state is useful.
 
 External scripts under `scripts/` report heartbeats and host health, index generated content, update agents, seed data, and help start the dashboard. These scripts call the same application APIs used by other integrations.
+
+The Mac Mini Guardian producer remains independently owned and scheduled under
+`/home/oggie/projects/mac-mini-guardian`. Mission Control does not probe or
+recover the Mac Mini. It validates and displays the producer's latest report,
+using the contract and freshness behavior documented in
+`docs/guardian-integration.md`.
 
 ## Major Design Decisions
 
@@ -349,6 +356,7 @@ Phase 2.2 is ordered around operational workflow improvements rather than an app
 - The mission creation route contains a shared-secret check but currently does not reject a failed check; this should be treated as unauthenticated behavior.
 - The current ESLint 9 configuration fails before source evaluation with a circular configuration serialization error.
 - Production builds succeed but emit a non-fatal Turbopack NFT trace warning caused by broad filesystem access traced through `src/lib/agentos.ts`.
+- Engineering backlog: isolate validation build output from the live production `.next` directory so `npm run build` cannot invalidate assets used by a running `next start` process.
 - The dashboard depends on PostgreSQL and local AgentOS paths being available to the Next.js server process.
 - Reporter freshness depends on external scheduling; Mission Control does not itself run every reporter continuously.
 

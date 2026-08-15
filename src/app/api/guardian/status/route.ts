@@ -1,37 +1,73 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { requireInternalApiSecret } from "@/lib/internal-api-auth";
+import {
+  classifyGuardianRecord,
+  parseGuardianPayload,
+  unavailableGuardianResponse,
+} from "@/lib/guardian-status";
 
 export const dynamic = "force-dynamic";
 
 const STORE_KEY = "mac-mini-guardian-status";
 
-function authorized(req: NextRequest): boolean {
-  const secret = process.env.INTERNAL_API_SECRET;
-  const auth = req.headers.get("authorization") || "";
-  return Boolean(secret) && auth === `Bearer ${secret}`;
+interface GuardianRouteDependencies {
+  findStatus: () => Promise<{ data: unknown; updatedAt: Date } | null>;
+  saveStatus: (data: ReturnType<typeof parseGuardianPayload>) => Promise<{
+    data: unknown;
+    updatedAt: Date;
+  }>;
+  now: () => number;
 }
 
-export async function GET() {
-  try {
-    const record = await prisma.dataStore.findUnique({ where: { key: STORE_KEY } });
-    return NextResponse.json({ status: record?.data ?? null, updatedAt: record?.updatedAt ?? null });
-  } catch {
-    return NextResponse.json({ status: null, updatedAt: null }, { status: 503 });
-  }
+export function createGuardianStatusHandlers(dependencies: GuardianRouteDependencies) {
+  return {
+    GET: async () => {
+      try {
+        const record = await dependencies.findStatus();
+        return NextResponse.json(classifyGuardianRecord(record, dependencies.now));
+      } catch {
+        return NextResponse.json(unavailableGuardianResponse(), { status: 503 });
+      }
+    },
+    POST: async (req: NextRequest) => {
+      const authorizationError = requireInternalApiSecret(req);
+      if (authorizationError) return authorizationError;
+
+      const body = await req.json().catch(() => null);
+      let payload;
+      try {
+        payload = parseGuardianPayload(body, { now: dependencies.now });
+      } catch (error) {
+        return NextResponse.json(
+          { error: error instanceof Error ? error.message : "Invalid Guardian payload" },
+          { status: 400 },
+        );
+      }
+
+      try {
+        const record = await dependencies.saveStatus(payload);
+        return NextResponse.json(classifyGuardianRecord(record, dependencies.now));
+      } catch {
+        return NextResponse.json(
+          { ...unavailableGuardianResponse(), error: "Failed to persist Guardian status" },
+          { status: 503 },
+        );
+      }
+    },
+  };
 }
 
-export async function POST(req: NextRequest) {
-  if (!authorized(req)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const body = await req.json().catch(() => null);
-  if (!body || typeof body !== "object" || typeof body.hostname !== "string" || typeof body.status !== "string") {
-    return NextResponse.json({ error: "hostname and status are required" }, { status: 400 });
-  }
-  const record = await prisma.dataStore.upsert({
+const handlers = createGuardianStatusHandlers({
+  findStatus: () => prisma.dataStore.findUnique({ where: { key: STORE_KEY } }),
+  saveStatus: (data) => prisma.dataStore.upsert({
     where: { key: STORE_KEY },
-    create: { key: STORE_KEY, data: body },
-    update: { data: body },
-  });
-  return NextResponse.json({ status: record.data, updatedAt: record.updatedAt });
-}
+    create: { key: STORE_KEY, data: data as unknown as Prisma.InputJsonValue },
+    update: { data: data as unknown as Prisma.InputJsonValue },
+  }),
+  now: Date.now,
+});
+
+export const GET = handlers.GET;
+export const POST = handlers.POST;
